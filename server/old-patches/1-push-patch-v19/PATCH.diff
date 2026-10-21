@@ -1,0 +1,179 @@
+--- a/index.php
++++ b/index.php
+@@ -244,6 +244,9 @@
+         ['GET', '#^/push/key$#', 'h_push_key'],
+         ['POST', '#^/push/subscribe$#', 'h_push_subscribe'],
+         ['POST', '#^/push/unsubscribe$#', 'h_push_unsubscribe'],
++        // customer app: phone push tokens (Firebase Cloud Messaging)
++        ['POST', '#^/me/device$#', 'h_me_device_add'],
++        ['DELETE', '#^/me/device$#', 'h_me_device_del'],
+         ['GET', '#^/admin/notify$#', 'h_admin_notify_list'],
+         ['POST', '#^/admin/notify$#', 'h_admin_notify'],
+         ['GET', '#^/admin/notify/people$#', 'h_admin_notify_people'],
+
+--- a/lib/db.php
++++ b/lib/db.php
+@@ -78,7 +78,7 @@
+ }
+ 
+ /** Brings an already-installed database up to the current schema (idempotent, runs once per version). */
+-const SCHEMA_VERSION = '18';
++const SCHEMA_VERSION = '19';
+ function ensure_schema() {
+     try {
+         cfg('db', []);
+
+--- a/lib/schema.php
++++ b/lib/schema.php
+@@ -157,6 +157,9 @@
+         ['rider_withdrawals', "id $pk, rider_id $i NOT NULL, amount $d NOT NULL, method VARCHAR(10) NOT NULL, details TEXT NOT NULL, status VARCHAR(12) NOT NULL DEFAULT 'pending', reason VARCHAR(255) NULL, admin_note VARCHAR(255) NULL, pay_ref VARCHAR(120) NULL, admin_name VARCHAR(190) NULL, paid_at $i NULL, created_at $i NOT NULL, updated_at $i NOT NULL",
+             [[0, 'idx_rw_rider', 'rider_id, id'], [0, 'idx_rw_status', 'status, id']]],
+         ['rate_hits', "k VARCHAR(80) NOT NULL, ts $i NOT NULL", [[0, 'idx_rh', 'k, ts']]],
++        // v19: phones of the customer app (Firebase Cloud Messaging tokens); token_hash keeps each token unique
++        ['device_tokens', "id $pk, user_id VARCHAR(40) NOT NULL, token TEXT NOT NULL, token_hash VARCHAR(64) NOT NULL, platform VARCHAR(10) NOT NULL, created_at $i NOT NULL, updated_at $i NOT NULL",
++            [[1, 'ux_dt_token', 'token_hash'], [0, 'idx_dt_user', 'user_id']]],
+     ];
+     $out = [];
+     foreach ($T as $t) {
+
+--- a/lib/notify.php
++++ b/lib/notify.php
+@@ -114,6 +114,8 @@
+ /* ---------- queue ---------- */
+ function push_supported() { return function_exists('openssl_pkey_derive') && function_exists('curl_init') && defined('OPENSSL_KEYTYPE_EC'); }
+ function push_enqueue($role, $owner, $payload, $dkey) {
++    // customer app phones (FCM) get the same message as the browsers
++    if ($role === 'user') fcm_enqueue((string)$owner, $payload);
+     try {
+         $subs = db_rows('SELECT id FROM push_subs WHERE role=? AND owner_id=?', [$role, (string)$owner]);
+         if (!$subs) return;
+@@ -155,6 +157,113 @@
+ }
+ 
+ /* =====================================================================
++ * Customer app: phone push through Firebase Cloud Messaging (HTTP v1).
++ * FCM only carries the message; the notification itself is the user_notif row above.
++ * config.php: 'fcm_service_account' => '/home/USER/private/firebase-service-account.json'
++ *             (path outside the web root; the JSON array itself also works). Never commit the file.
++ * ===================================================================== */
++
++/** POST /me/device {token, platform}: the app registers its push token after login. */
++function h_me_device_add() {
++    $u = require_user();
++    $b = body_json();
++    $tok = isset($b['token']) && is_string($b['token']) ? trim($b['token']) : '';
++    $pf = isset($b['platform']) && in_array($b['platform'], ['android', 'ios'], true) ? $b['platform'] : 'android';
++    if ($tok === '' || strlen($tok) > 4096 || !preg_match('/^[A-Za-z0-9_:\-\.]+$/', $tok)) fail(400, 'Invalid device token', 'token');
++    $h = hash('sha256', $tok); $t = now_ts();
++    // one phone = one token; if another account signs in on it, the phone moves to that account
++    if (db_val('SELECT 1 FROM device_tokens WHERE token_hash=?', [$h])) q('UPDATE device_tokens SET user_id=?, platform=?, updated_at=? WHERE token_hash=?', [$u['id'], $pf, $t, $h]);
++    else {
++        try { q('INSERT INTO device_tokens (user_id, token, token_hash, platform, created_at, updated_at) VALUES (?,?,?,?,?,?)', [$u['id'], $tok, $h, $pf, $t, $t]); }
++        catch (PDOException $e) { if (!is_unique_violation($e)) throw $e; }
++        // keep the newest 10 phones per customer
++        $ids = array_column(db_rows('SELECT id FROM device_tokens WHERE user_id=? ORDER BY updated_at DESC, id DESC', [$u['id']]), 'id');
++        if (count($ids) > 10) q('DELETE FROM device_tokens WHERE id IN (' . implode(',', array_map('intval', array_slice($ids, 10))) . ')');
++    }
++    json_out(['ok' => true]);
++}
++/** DELETE /me/device {token}: the app removes its token on logout. */
++function h_me_device_del() {
++    $u = require_user();
++    $b = body_json();
++    $tok = isset($b['token']) && is_string($b['token']) ? trim($b['token']) : '';
++    if ($tok !== '') q('DELETE FROM device_tokens WHERE token_hash=? AND user_id=?', [hash('sha256', $tok), $u['id']]);
++    json_out(['ok' => true]);
++}
++
++/** Service account from config (file path or array); null when phone push is not set up. */
++function fcm_account() {
++    static $a = false;
++    if ($a !== false) return $a;
++    $c = cfg('fcm_service_account', null);
++    if (is_string($c) && $c !== '' && is_file($c)) $c = json_decode((string)@file_get_contents($c), true);
++    $a = (is_array($c) && !empty($c['project_id']) && !empty($c['client_email']) && !empty($c['private_key'])) ? $c : null;
++    return $a;
++}
++/** OAuth access token for FCM (signed JWT grant), cached in kv for 50 minutes. */
++function fcm_access_token() {
++    $acc = fcm_account();
++    if (!$acc) return null;
++    $row = kv_get('fcm_token');
++    if ($row) { $j = json_decode((string)$row['v'], true); if (is_array($j) && !empty($j['t']) && (int)($j['exp'] ?? 0) > now_ts() + 60) return $j['t']; }
++    $now = now_ts();
++    $h = b64u_enc(json_encode(['alg' => 'RS256', 'typ' => 'JWT']));
++    $c = b64u_enc(json_encode(['iss' => $acc['client_email'], 'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
++                               'aud' => 'https://oauth2.googleapis.com/token', 'iat' => $now, 'exp' => $now + 3600], JSON_UNESCAPED_SLASHES));
++    $sig = '';
++    if (!openssl_sign($h . '.' . $c, $sig, $acc['private_key'], OPENSSL_ALGO_SHA256)) { error_log('fcm: sign failed'); return null; }
++    $ch = curl_init('https://oauth2.googleapis.com/token');
++    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_CONNECTTIMEOUT => 4,
++        CURLOPT_POSTFIELDS => http_build_query(['grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer', 'assertion' => $h . '.' . $c . '.' . b64u_enc($sig)])]);
++    $res = json_decode((string)curl_exec($ch), true);
++    curl_close($ch);
++    if (!is_array($res) || empty($res['access_token'])) { error_log('fcm: no access token'); return null; }
++    kv_set('fcm_token', json_encode(['t' => $res['access_token'], 'exp' => $now + min(3000, (int)($res['expires_in'] ?? 3600))]));
++    return $res['access_token'];
++}
++/** Collects phone messages during the request; they are sent after the response, like Web Push. */
++function fcm_enqueue($userId, $payload) {
++    static $q = null;
++    if (!fcm_account() || !function_exists('curl_init')) return;
++    try {
++        $toks = db_rows('SELECT id, token FROM device_tokens WHERE user_id=?', [$userId]);
++    } catch (Throwable $e) { return; } // table not created yet
++    if (!$toks) return;
++    if ($q === null) {
++        $q = [];
++        register_shutdown_function(function () use (&$q) {
++            if (function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
++            foreach ($q as $m) fcm_send($m[0], $m[1], $m[2]);
++        });
++    }
++    foreach ($toks as $t) $q[] = [(int)$t['id'], $t['token'], $payload];
++}
++/** One FCM message. A token Google no longer knows is deleted. */
++function fcm_send($rowId, $token, $p) {
++    try {
++        $acc = fcm_account(); $at = fcm_access_token();
++        if (!$acc || !$at) return;
++        $n = ['title' => (string)($p['title'] ?? ''), 'body' => (string)($p['body'] ?? '')];
++        if (!empty($p['img'])) $n['image'] = (string)$p['img'];
++        $msg = ['message' => ['token' => $token, 'notification' => $n,
++            // the app opens this link when the notification is tapped (relative paths like /orders/NBM-1)
++            'data' => ['url' => (string)($p['url'] ?? '/'), 'id' => (string)($p['id'] ?? ''), 'kind' => (string)($p['tag'] ?? '')],
++            'android' => ['priority' => 'high', 'notification' => ['channel_id' => 'default', 'tag' => (string)($p['id'] ?? 'nb')]]]];
++        $ch = curl_init('https://fcm.googleapis.com/v1/projects/' . rawurlencode($acc['project_id']) . '/messages:send');
++        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_CONNECTTIMEOUT => 4,
++            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $at],
++            CURLOPT_POSTFIELDS => json_encode($msg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
++        $res = (string)curl_exec($ch);
++        $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
++        curl_close($ch);
++        if ($code === 404 || ($code === 400 && strpos($res, 'INVALID_ARGUMENT') !== false && strpos($res, 'token') !== false) || strpos($res, 'UNREGISTERED') !== false)
++            q('DELETE FROM device_tokens WHERE id=?', [$rowId]);
++        elseif ($code === 401) q("DELETE FROM kv WHERE k='fcm_token'"); // expired access token: fetch a new one next time
++        elseif ($code < 200 || $code >= 300) error_log('fcm_send: HTTP ' . $code . ' ' . substr($res, 0, 300));
++    } catch (Throwable $e) { error_log('fcm_send: ' . $e->getMessage()); }
++}
++
++/* =====================================================================
+  * Web Push crypto
+  * ===================================================================== */
+ const P256_SPKI_PREFIX = '3059301306072a8648ce3d020106082a8648ce3d030107034200';
+
+--- a/lib/handlers_chat.php
++++ b/lib/handlers_chat.php
+@@ -335,6 +335,11 @@
+         q("UPDATE chat_convs SET mode='human', assignee=?, unread_user=unread_user+1, last_msg_id=?, last_at=? WHERE id=?", [$an, $mid, $mt, $c['id']]);
+         return $mid;
+     });
++    // a signed-in customer hears about the reply (notification centre, browser and phone push)
++    if ((int)$c['reg'] === 1 && strpos((string)$c['cid'], 'g_') !== 0) {
++        $prev = $kind === 'img' ? 'ছবি' : ($kind === 'aud' ? 'ভয়েস মেসেজ' : mb_substr($text, 0, 140, 'UTF-8'));
++        notify('user', (string)$c['cid'], 'NurBuy সাপোর্ট থেকে নতুন বার্তা', $prev, ['url' => '/chat', 'kind' => 'chat', 'dkey' => 'chat:' . $mid]);
++    }
+     json_out(['msg' => chat_get_msg($mid), 'conv' => chat_conv_out(db_row('SELECT * FROM chat_convs WHERE id=?', [$c['id']]), true)]);
+ }
+ function h_admin_chat_status($id) {
+

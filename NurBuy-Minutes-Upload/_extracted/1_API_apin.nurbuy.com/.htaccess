@@ -1,0 +1,45 @@
+Options -Indexes
+DirectoryIndex index.php
+
+# Block direct access to internals
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Pass the Authorization header to PHP (CGI/FastCGI on cPanel)
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    RewriteRule ^lib(/|$) - [F,L]
+    RewriteRule ^(config(\.sample)?\.php|install\.lock)$ - [F,L]
+    RewriteRule ^\.ht - [F,L]
+    RewriteRule ^\.env - [F,L]
+
+    # Everything that is not an existing file/dir goes to the router
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+<IfModule mod_setenvif.c>
+    SetEnvIfNoCase Authorization "(.+)" HTTP_AUTHORIZATION=$1
+</IfModule>
+
+<FilesMatch "^(\.env.*|\.user\.ini|config(\.sample)?\.php|install\.lock|.*\.(sqlite|sqlite3|db|sql|log|md))$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Larger uploads where mod_php is used (ignored elsewhere; on FastCGI use cPanel MultiPHP INI Editor)
+<IfModule mod_php.c>
+    php_value upload_max_filesize 16M
+    php_value post_max_size 20M
+</IfModule>
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 16M
+    php_value post_max_size 20M
+</IfModule>

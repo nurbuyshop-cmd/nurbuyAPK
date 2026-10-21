@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "589840831334",
+    "project_id": "nurbuy-d93f2",
+    "storage_bucket": "nurbuy-d93f2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:589840831334:android:dc31dc9f819192a3092ea7",
+        "android_client_info": {
+          "package_name": "com.nurbuy.minutes"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBm76_k2gi8Oth1oNadd_Fm3eD_NysVrFE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

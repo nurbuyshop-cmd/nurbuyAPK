@@ -1,0 +1,31 @@
+# installed packages and build output (recreated by npm install / builds)
+node_modules/
+.expo/
+dist/
+web-build/
+*.apk
+*.aab
+android/
+ios/
+
+# secrets: never commit
+.env
+.env.*
+!.env.sample
+**/config.php
+*service-account*.json
+*.keystore
+*.jks
+*.p8
+*.p12
+*.pem
+
+# large reference files (kept only on this computer)
+reference/videos/
+reference/live-api-assets/
+
+# editor / system files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log

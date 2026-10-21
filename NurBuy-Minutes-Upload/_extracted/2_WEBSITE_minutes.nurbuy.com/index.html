@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NurBuy Minutes</title>
+<meta name="description" content="NurBuy Minutes – বাজার, খাবার, ঔষধ ও প্রয়োজনীয় সবকিছু কয়েক মিনিটে আপনার দরজায়।">
+<meta name="theme-color" content="#1d2fe0">
+<link rel="manifest" href="/manifest.webmanifest">
+<script>document.documentElement.className+=' nbw'</script>
+<script>/* phones: detect weak devices once (lite mode) and pick the photo size the screen actually needs */
+(function(){var W=window;try{var d=document.documentElement,n=navigator,m=n.deviceMemory||0,c=n.hardwareConcurrency||0,r=W.devicePixelRatio||1,mq=function(q){return !!(W.matchMedia&&W.matchMedia(q).matches)},hv=mq('(hover:hover) and (pointer:fine)'),pw=Math.min(screen.width||0,screen.height||0)*r,q=null;try{q=localStorage.getItem('nb_lite')}catch(e){}
+var lite=q==='1'||(q!=='0'&&!hv&&((m&&m<=4)||(c&&c<=4)||(pw&&pw<=800)||mq('(prefers-reduced-motion: reduce)')));
+if(lite)d.className+=' lite';W.NB_LITE=lite;W.NB_HOVER=hv;W.NB_TW=(W.innerWidth||360)>=900?640:(lite&&r<=1.75?320:480)}catch(e){W.NB_TW=640}})()</script>
+<script src="/config.js"></script>
+<script>/* start loading the catalog (products, sponsors, banners) right away, before the big script below is parsed */(function(){try{var a=(window.NB_API||'').replace(/\/+$/,'');if(!a)return;window.__NBC=fetch(a+(window.NB_API_PRETTY===false?'/index.php':'')+'/catalog').then(function(r){return r.ok?r.json():null}).catch(function(){return null})}catch(e){}})()</script>
+<link href="https://fonts.googleapis.com/css2?family=Hind:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&family=Tiro+Bangla&display=swap" rel="stylesheet">
+<script>window.NB_BUILD='2b5306383c'</script>
+<link rel="stylesheet" href="/assets/css/style.css?v=2b5306383c">
+<script>/*NBSHARED:BEGIN*/
+/* NurBuy shared: image crop editor + upload checks (used by customer, admin, seller and rider sites).
+ *
+ *   NBCrop.open(file, opts) -> Promise<File|null>   (null = cancelled; the old image stays as it was)
+ *   NBCrop.pick(opts)       -> Promise<File|null>   (opens the file chooser first)
+ *   NBCrop.check(file)      -> '' or an error message (type + 10 MB limit)
+ *   NBCrop.attach(input, opts, onFile)  every <input type=file> gets the editor
+ *
+ * opts: { aspect: 1 | 16/9 | 3 | null (free), round: true (circle guide for profile photos),
+ *         preset: 'profile'|'logo'|'cover'|'banner'|'product'|'icon'|'doc'|'free',
+ *         maxW: output width limit (px), title, lang: 'bn'|'en' }
+ * Zoom (slider, mouse wheel, two-finger pinch), move (drag), rotate 90°, Done / Cancel.
+ */
+(function () {
+  if (window.NBCrop) return;
+  var MAX_MB = 10;
+  var TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
+  var PRESETS = {
+    profile: { aspect: 1, round: true, maxW: 800 }, logo: { aspect: 1, maxW: 800 }, icon: { aspect: 1, maxW: 512 },
+    cover: { aspect: 3, maxW: 2400 }, banner: { aspect: 16 / 6, maxW: 2400 }, product: { aspect: 1, maxW: 1600 },
+    doc: { aspect: null, maxW: 1800 }, free: { aspect: null, maxW: 2000 }
+  };
+  function L(o, en, bn) { return (o.lang || document.documentElement.lang || 'bn') === 'en' ? en : bn; }
+  function check(f, o) {
+    o = o || {};
+    if (!f) return L(o, 'No file chosen', 'কোনো ফাইল বাছাই করা হয়নি');
+    var n = (f.name || '').toLowerCase();
+    if (/\.(zip|rar|7z|tar|gz)$/.test(n) || /zip|compressed|x-rar/.test(f.type || '')) return L(o, 'ZIP / archive files are not images. Choose a JPG, PNG or WebP image.', 'ZIP বা আর্কাইভ ফাইল ছবি নয়। JPG, PNG বা WebP ছবি দিন।');
+    if (f.type && TYPES.indexOf(f.type) < 0) return L(o, 'This file type is not allowed. Use JPG, PNG, WebP or GIF.', 'এই ধরনের ফাইল চলবে না। JPG, PNG, WebP বা GIF দিন।');
+    if (f.size > MAX_MB * 1024 * 1024) return L(o, 'The image is larger than 10 MB. Choose a smaller image.', 'ছবিটি ১০ MB-এর বেশি। ছোট ছবি দিন।');
+    return '';
+  }
+  var CSS = '.nbc-o{position:fixed;inset:0;z-index:2147483000;background:#0b0f1f;display:flex;flex-direction:column;font-family:inherit;color:#fff;touch-action:none}' +
+    '.nbc-h{display:flex;align-items:center;gap:10px;padding:12px 16px}.nbc-h b{flex:1;font-size:16px;font-weight:600}' +
+    '.nbc-st{position:relative;flex:1;overflow:hidden;cursor:grab;user-select:none}.nbc-st.drag{cursor:grabbing}' +
+    '.nbc-st img{position:absolute;left:0;top:0;transform-origin:0 0;max-width:none;pointer-events:none;-webkit-user-drag:none}' +
+    '.nbc-fr{position:absolute;box-shadow:0 0 0 9999px rgba(10,14,30,.6);border:2px solid #fff;pointer-events:none}.nbc-fr.r{border-radius:50%}' +
+    '.nbc-fr i{position:absolute;border:0 solid rgba(255,255,255,.35)}.nbc-fr i:nth-child(1){left:33.3%;top:0;bottom:0;border-left-width:1px}.nbc-fr i:nth-child(2){left:66.6%;top:0;bottom:0;border-left-width:1px}.nbc-fr i:nth-child(3){top:33.3%;left:0;right:0;border-top-width:1px}.nbc-fr i:nth-child(4){top:66.6%;left:0;right:0;border-top-width:1px}' +
+    '.nbc-f{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px calc(12px + env(safe-area-inset-bottom))}' +
+    '.nbc-z{flex:1;min-width:140px;display:flex;align-items:center;gap:8px}.nbc-z input{flex:1;accent-color:#ff6a00}' +
+    '.nbc-b{border:0;border-radius:10px;padding:10px 16px;font:inherit;font-size:14px;cursor:pointer;background:rgba(255,255,255,.14);color:#fff}' +
+    '.nbc-b.p{background:#1d2fe0}.nbc-b:disabled{opacity:.5}.nbc-b svg{width:18px;height:18px;vertical-align:-4px;fill:none;stroke:currentColor;stroke-width:2}' +
+    '.nbc-r{display:flex;gap:6px}.nbc-r button{padding:6px 10px;font-size:12px}.nbc-r button.on{background:#ff6a00}.nbc-e{color:#ffb4a8;font-size:13px;width:100%}';
+  function css() { if (document.getElementById('nbc-css')) return; var s = document.createElement('style'); s.id = 'nbc-css'; s.textContent = CSS; document.head.appendChild(s); }
+
+  function open(file, opts) {
+    opts = Object.assign({}, PRESETS[(opts && opts.preset) || 'free'] || {}, opts || {});
+    var err = check(file, opts);
+    if (err) { alert(err); return Promise.resolve(null); }
+    // GIF animation and AVIF are kept as they are (canvas would flatten them)
+    if (file.type === 'image/gif' || file.type === 'image/avif') return Promise.resolve(file);
+    // product pictures are uploaded as they are: no crop step, the whole image is kept
+    if (opts.preset === 'product') return Promise.resolve(file);
+    css();
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file), img = new Image(), rot = 0, z = 1, zMin = 1, x = 0, y = 0, fr = null, aspect = opts.aspect || null, done = false;
+      var o = document.createElement('div'); o.className = 'nbc-o'; o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true');
+      var ratios = opts.aspect ? null : [[null, L(opts, 'Free', 'ফ্রি')], [1, '1:1'], [4 / 3, '4:3'], [16 / 9, '16:9']];
+      o.innerHTML = '<div class="nbc-h"><b>' + (opts.title || L(opts, 'Crop image', 'ছবি ক্রপ করুন')) + '</b><button class="nbc-b" data-a="x" type="button">' + L(opts, 'Cancel', 'বাতিল') + '</button></div>' +
+        '<div class="nbc-st"><img alt=""><div class="nbc-fr' + (opts.round ? ' r' : '') + '"><i></i><i></i><i></i><i></i></div></div>' +
+        '<div class="nbc-f"><div class="nbc-z"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8 11h6"/></svg>' +
+        '<input type="range" min="0" max="100" value="0" aria-label="Zoom"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8 11h6M11 8v6"/></svg></div>' +
+        (ratios ? '<div class="nbc-r">' + ratios.map(function (r, i) { return '<button class="nbc-b' + (i ? '' : ' on') + '" type="button" data-r="' + (r[0] || '') + '">' + r[1] + '</button>'; }).join('') + '</div>' : '') +
+        '<button class="nbc-b" data-a="rot" type="button" aria-label="Rotate"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg></button>' +
+        '<button class="nbc-b p" data-a="ok" type="button">' + L(opts, 'Done', 'ঠিক আছে') + '</button><div class="nbc-e" hidden></div></div>';
+      document.body.appendChild(o);
+      var st = o.querySelector('.nbc-st'), im = o.querySelector('img'), fe = o.querySelector('.nbc-fr'), zr = o.querySelector('input[type=range]'), ok = o.querySelector('[data-a=ok]');
+      var prevOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
+      function close(v) { if (done) return; done = true; URL.revokeObjectURL(url); o.remove(); document.body.style.overflow = prevOverflow; document.removeEventListener('keydown', key); resolve(v); }
+      function key(e) { if (e.key === 'Escape') close(null); if (e.key === 'Enter') ok.click(); }
+      document.addEventListener('keydown', key);
+      function iw() { return rot % 180 ? img.naturalHeight : img.naturalWidth; }
+      function ih() { return rot % 180 ? img.naturalWidth : img.naturalHeight; }
+      function frame() {
+        var W = st.clientWidth, H = st.clientHeight, pad = 24, a = aspect || (iw() / ih());
+        var fw = Math.min(W - pad * 2, (H - pad * 2) * a), fh = fw / a;
+        fr = { x: (W - fw) / 2, y: (H - fh) / 2, w: fw, h: fh };
+        fe.style.cssText = 'left:' + fr.x + 'px;top:' + fr.y + 'px;width:' + fw + 'px;height:' + fh + 'px';
+        zMin = Math.max(fw / iw(), fh / ih());
+      }
+      function clamp() {
+        var w = iw() * z, h = ih() * z;
+        x = Math.min(fr.x, Math.max(fr.x + fr.w - w, x)); y = Math.min(fr.y, Math.max(fr.y + fr.h - h, y));
+      }
+      function draw() {
+        clamp();
+        // the <img> keeps its natural size; rotation is applied around the image so the box (iw x ih) stays top-left aligned
+        var t = 'translate(' + x + 'px,' + y + 'px) scale(' + z + ')';
+        if (rot === 90) t += ' translate(' + img.naturalHeight + 'px,0) rotate(90deg)';
+        else if (rot === 180) t += ' translate(' + img.naturalWidth + 'px,' + img.naturalHeight + 'px) rotate(180deg)';
+        else if (rot === 270) t += ' translate(0,' + img.naturalWidth + 'px) rotate(270deg)';
+        im.style.transform = t;
+        zr.value = Math.round(Math.log(z / zMin) / Math.log(8) * 100);
+      }
+      function zoomTo(nz, cx, cy) {
+        nz = Math.max(zMin, Math.min(zMin * 8, nz));
+        if (cx == null) { cx = fr.x + fr.w / 2; cy = fr.y + fr.h / 2; }
+        x = cx - (cx - x) * nz / z; y = cy - (cy - y) * nz / z; z = nz; draw();
+      }
+      function reset() { frame(); z = zMin; x = fr.x + (fr.w - iw() * z) / 2; y = fr.y + (fr.h - ih() * z) / 2; draw(); }
+      img.onload = function () { im.src = url; reset(); };
+      img.onerror = function () { var e = o.querySelector('.nbc-e'); e.hidden = false; e.textContent = L(opts, 'This image could not be opened. Try another file (JPG / PNG / WebP).', 'ছবিটি খোলা গেল না। অন্য ফাইল দিন (JPG / PNG / WebP)।'); ok.disabled = true; };
+      img.src = url;
+      zr.oninput = function () { zoomTo(zMin * Math.pow(8, zr.value / 100)); };
+      st.addEventListener('wheel', function (e) { e.preventDefault(); var r = st.getBoundingClientRect(); zoomTo(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+      var pts = {}, last = null, pinch = null;
+      st.addEventListener('pointerdown', function (e) { st.setPointerCapture(e.pointerId); pts[e.pointerId] = [e.clientX, e.clientY]; st.classList.add('drag'); last = [e.clientX, e.clientY]; pinch = null; });
+      st.addEventListener('pointermove', function (e) {
+        if (!pts[e.pointerId]) return; pts[e.pointerId] = [e.clientX, e.clientY];
+        var ids = Object.keys(pts), r = st.getBoundingClientRect();
+        if (ids.length >= 2) {
+          var a = pts[ids[0]], b = pts[ids[1]], d = Math.hypot(a[0] - b[0], a[1] - b[1]), c = [(a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top];
+          if (pinch) zoomTo(z * d / pinch, c[0], c[1]); pinch = d; return;
+        }
+        x += e.clientX - last[0]; y += e.clientY - last[1]; last = [e.clientX, e.clientY]; draw();
+      });
+      function up(e) { delete pts[e.pointerId]; pinch = null; var k = Object.keys(pts); if (k.length) last = pts[k[0]]; else st.classList.remove('drag'); }
+      st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
+      window.addEventListener('resize', function () { if (!done && img.naturalWidth) reset(); });
+      o.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.a === 'x') return close(null);
+        if (b.dataset.a === 'rot') { rot = (rot + 90) % 360; reset(); return; }
+        if (b.hasAttribute('data-r')) { aspect = b.dataset.r ? +b.dataset.r : null; o.querySelectorAll('[data-r]').forEach(function (q) { q.classList.toggle('on', q === b); }); reset(); return; }
+        if (b.dataset.a === 'ok') {
+          ok.disabled = true;
+          // crop box in rotated-image pixels
+          var sx = (fr.x - x) / z, sy = (fr.y - y) / z, sw = fr.w / z, sh = fr.h / z;
+          var outW = Math.round(Math.min(sw, opts.maxW || 2000)), outH = Math.round(outW * sh / sw);
+          var cv = document.createElement('canvas'); cv.width = outW; cv.height = outH;
+          var g = cv.getContext('2d'), keepAlpha = file.type === 'image/png' || file.type === 'image/webp';
+          if (!keepAlpha) { g.fillStyle = '#fff'; g.fillRect(0, 0, outW, outH); }
+          g.imageSmoothingQuality = 'high';
+          g.save(); g.scale(outW / sw, outH / sh); g.translate(-sx, -sy);
+          if (rot === 90) { g.translate(img.naturalHeight, 0); g.rotate(Math.PI / 2); }
+          else if (rot === 180) { g.translate(img.naturalWidth, img.naturalHeight); g.rotate(Math.PI); }
+          else if (rot === 270) { g.translate(0, img.naturalWidth); g.rotate(-Math.PI / 2); }
+          g.drawImage(img, 0, 0); g.restore();
+          var type = keepAlpha ? 'image/png' : 'image/jpeg';
+          cv.toBlob(function (bl) {
+            if (!bl) { ok.disabled = false; return; }
+            var base = (file.name || 'image').replace(/\.[a-z0-9]+$/i, '');
+            var out; try { out = new File([bl], base + (type === 'image/png' ? '.png' : '.jpg'), { type: type }); } catch (x2) { out = bl; out.name = base + '.jpg'; }
+            if (out.size > MAX_MB * 1024 * 1024) { alert(L(opts, 'The cropped image is still larger than 10 MB.', 'ক্রপ করা ছবিও ১০ MB-এর বেশি।')); ok.disabled = false; return; }
+            close(out);
+          }, type, 0.9);
+        }
+      });
+    });
+  }
+  function pick(opts) {
+    return new Promise(function (resolve) {
+      var i = document.createElement('input'); i.type = 'file'; i.accept = 'image/jpeg,image/png,image/webp,image/gif';
+      i.style.display = 'none'; i._nbcSkip = 1; i.setAttribute('data-nocrop', '1'); document.body.appendChild(i);
+      i.onchange = function () { var f = i.files && i.files[0]; i.remove(); if (!f) return resolve(null); open(f, opts).then(resolve); };
+      i.click();
+    });
+  }
+  /** Gives an existing <input type=file> the crop editor. onFile(croppedFile) is called; cancel leaves the input empty. */
+  function attach(input, opts, onFile) {
+    if (!input || input._nbc) return; input._nbc = 1;
+    input.addEventListener('change', function (e) {
+      if (input._nbcSkip) return;
+      var f = input.files && input.files[0]; if (!f) return;
+      e.stopImmediatePropagation();
+      var o = typeof opts === 'function' ? opts() : opts;
+      open(f, o).then(function (out) {
+        if (!out) { input.value = ''; return; }
+        if (onFile) return onFile(out);
+        // hand the cropped file back to the page's own upload code through the same input
+        try { var dt = new DataTransfer(); dt.items.add(out); input.files = dt.files; } catch (x) { input._nbcFile = out; }
+        input._nbcSkip = 1; input.dispatchEvent(new Event('change', { bubbles: true })); input._nbcSkip = 0;
+      });
+    }, true);
+  }
+  /** One switch for a whole site: every image <input type=file> gets the crop editor.
+   *  resolve(input) -> opts | false (false = leave this input alone). Several files at once are only checked, not cropped. */
+  function auto(resolve) {
+    document.addEventListener('change', function (e) {
+      var input = e.target;
+      if (!input || input.tagName !== 'INPUT' || input.type !== 'file' || input._nbcSkip || !input.files || !input.files.length) return;
+      var acc = (input.accept || '').toLowerCase();
+      if (acc && acc.indexOf('image') < 0) return;
+      var o = resolve ? resolve(input) : {};
+      if (o === false) return;
+      var files = [].slice.call(input.files), img = files.filter(function (f) { return /^image\//.test(f.type || ''); });
+      for (var i = 0; i < files.length; i++) { var er = check(files[i], o || {}); if (er && (/^image\//.test(files[i].type || '') || /\.(zip|rar|7z)$/i.test(files[i].name || ''))) { e.stopImmediatePropagation(); e.preventDefault(); alert(er); input.value = ''; return; } }
+      if (files.length !== 1 || img.length !== 1 || /gif|svg|avif/.test(img[0].type)) return;
+      e.stopImmediatePropagation();
+      open(img[0], o || {}).then(function (out) {
+        if (!out) { input.value = ''; return; }
+        try { var dt = new DataTransfer(); dt.items.add(out); input.files = dt.files; } catch (x) { return; }
+        input._nbcSkip = 1; input.dispatchEvent(new Event('change', { bubbles: true })); input._nbcSkip = 0;
+      });
+    }, true);
+  }
+  window.NBCrop = { open: open, pick: pick, attach: attach, auto: auto, check: check, MAX_MB: MAX_MB, presets: PRESETS };
+})();
+
+/* NurBuy shared: Web Push sign-up for customer, seller and rider sites.
+ *   NBPush.supported()            -> bool
+ *   NBPush.permission()           -> 'granted' | 'denied' | 'default' | 'unsupported'
+ *   NBPush.enable(api, token)     -> Promise<'on'|'denied'|'unsupported'|'error'> (asks the browser for permission)
+ *   NBPush.sync(api, token)       -> re-registers quietly after login when permission was already given
+ *   NBPush.disable(api)           -> stops push on this browser
+ *   NBPush.onClick(fn)            -> fn(url) when a notification is clicked while the site is open
+ * The service worker file (sw.js) sits next to index.html on each site.
+ */
+(function () {
+  if (window.NBPush) return;
+  function SWP() { return window.NB_SW || 'sw.js'; }
+  function supported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext !== false; }
+  function permission() { return supported() ? Notification.permission : 'unsupported'; }
+  function b64(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); s += '==='.slice((s.length + 3) % 4); var r = atob(s), a = new Uint8Array(r.length); for (var i = 0; i < r.length; i++) a[i] = r.charCodeAt(i); return a; }
+  function call(api, token, path, body) {
+    var h = { 'Content-Type': 'application/json' }; if (token) h.Authorization = 'Bearer ' + token;
+    return fetch(api.replace(/\/+$/, '') + path, { method: body ? 'POST' : 'GET', headers: h, body: body ? JSON.stringify(body) : undefined })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; }); });
+  }
+  function reg() { return navigator.serviceWorker.register(SWP()).then(function () { return navigator.serviceWorker.ready; }); }
+  function subscribe(api, token) {
+    return Promise.all([reg(), call(api, null, '/push/key')]).then(function (x) {
+      var r = x[0], key = x[1].key;
+      if (!key) throw new Error('no key');
+      return r.pushManager.getSubscription().then(function (s) {
+        // a subscription made with an older server key must be replaced
+        if (s && s.options && s.options.applicationServerKey) {
+          var a = new Uint8Array(s.options.applicationServerKey), b = b64(key), same = a.length === b.length;
+          for (var i = 0; same && i < a.length; i++) if (a[i] !== b[i]) same = false;
+          if (!same) return s.unsubscribe().then(function () { return null; });
+        }
+        return s;
+      }).then(function (s) { return s || r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) }); });
+    }).then(function (s) { return call(api, token, '/push/subscribe', s.toJSON()); });
+  }
+  function enable(api, token) {
+    if (!supported()) return Promise.resolve('unsupported');
+    return Promise.resolve(Notification.permission === 'default' ? Notification.requestPermission() : Notification.permission).then(function (p) {
+      if (p !== 'granted') return 'denied';
+      return subscribe(api, token).then(function () { return 'on'; }, function () { return 'error'; });
+    });
+  }
+  function sync(api, token) {
+    if (!supported() || Notification.permission !== 'granted' || !token) return Promise.resolve(false);
+    return subscribe(api, token).then(function () { return true; }, function () { return false; });
+  }
+  function disable(api) {
+    if (!supported()) return Promise.resolve();
+    return navigator.serviceWorker.getRegistration(SWP()).then(function (r) {
+      if (!r) return; return r.pushManager.getSubscription().then(function (s) {
+        if (!s) return; var ep = s.endpoint; return s.unsubscribe().then(function () { return call(api, null, '/push/unsubscribe', { endpoint: ep }).catch(function () {}); });
+      });
+    });
+  }
+  var cbs = [];
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'nb-open' && e.data.url) cbs.forEach(function (f) { f(e.data.url); }); });
+  window.NBPush = { supported: supported, permission: permission, enable: enable, sync: sync, disable: disable, onClick: function (f) { cbs.push(f); } };
+})();
+
+
+/* NBRich: the small, safe rich-text format used for the website pages (About, Privacy, Return, Shipping ...).
+ *   NBRich.clean(html) -> clean html   Only a short list of tags and styles survives; scripts, event handlers and odd links are dropped.
+ *   NBRich.plain(text) -> html         Old plain-text pages become paragraphs.
+ *   NBRich.isHtml(text) -> bool
+ * The admin editor and the customer website both pass the text through clean(), so what you see while editing is what customers get. */
+(function () {
+  if (window.NBRich) return;
+  var SZ = { 1: 10, 2: 13, 3: 16, 4: 18, 5: 24, 6: 32, 7: 48 };
+  var KEEP = { P: 'p', DIV: 'div', SPAN: 'span', B: 'b', STRONG: 'strong', I: 'i', EM: 'em', U: 'u', S: 's', H2: 'h2', H3: 'h3', H4: 'h4', UL: 'ul', OL: 'ol', LI: 'li', BLOCKQUOTE: 'blockquote' };
+  var DROP = { SCRIPT: 1, STYLE: 1, IFRAME: 1, OBJECT: 1, EMBED: 1, TEMPLATE: 1, NOSCRIPT: 1, FORM: 1, INPUT: 1, BUTTON: 1, SVG: 1, MATH: 1, VIDEO: 1, AUDIO: 1 };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function url(u, img) {
+    u = String(u || '').trim();
+    if (!u || /[\s"'<>\\]/.test(u)) return '';
+    if (img) return /^(https?:\/\/|\/(?!\/))/i.test(u) ? u : '';
+    return /^(https?:\/\/|mailto:|tel:|#|\/(?!\/))/i.test(u) ? u : '';
+  }
+  function sty(c) {
+    var o = [], st = c.style || {};
+    if (/^(left|center|right|justify)$/.test(st.textAlign || '')) o.push('text-align:' + st.textAlign);
+    var m = /^(\d+(?:\.\d+)?)(px|em|rem|%)$/.exec(st.fontSize || '');
+    if (m) { var v = +m[1], px = m[2] == 'px' ? v : m[2] == '%' ? v * .16 : v * 16; if (px >= 8 && px <= 72) o.push('font-size:' + m[1] + m[2]); }
+    return o.join(';');
+  }
+  function walk(n) {
+    var o = '';
+    for (var c = n.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType == 3) { o += esc(c.nodeValue); continue; }
+      if (c.nodeType != 1) continue;
+      var t = c.tagName.toUpperCase();
+      if (DROP[t]) continue;
+      if (t == 'BR') { o += '<br>'; continue; }
+      if (t == 'HR') { o += '<hr>'; continue; }
+      if (t == 'IMG') {
+        var s = url(c.getAttribute('src'), 1); if (!s) continue;
+        var cl = /(?:^|\s)pi-(l|r|c)(?:\s|$)/.exec(c.getAttribute('class') || ''), w = /^(\d{1,3})%$/.exec((c.style && c.style.width) || '');
+        o += '<img src="' + esc(s) + '" alt="' + esc((c.getAttribute('alt') || '').slice(0, 200)) + '"' + (cl ? ' class="pi-' + cl[1] + '"' : '') + (w && +w[1] >= 5 && +w[1] <= 100 ? ' style="width:' + w[1] + '%"' : '') + '>';
+        continue;
+      }
+      var inner = walk(c);
+      if (t == 'A') { var h = url(c.getAttribute('href')); o += h ? '<a href="' + esc(h) + '" target="_blank" rel="noopener noreferrer nofollow">' + inner + '</a>' : inner; continue; }
+      if (t == 'FONT') { var px = SZ[c.getAttribute('size')]; o += px ? '<span style="font-size:' + px + 'px">' + inner + '</span>' : inner; continue; }
+      var tag = KEEP[t]; if (!tag) { o += inner; continue; }
+      var st = sty(c); o += '<' + tag + (st ? ' style="' + st + '"' : '') + '>' + inner + '</' + tag + '>';
+    }
+    return o;
+  }
+  function clean(html) {
+    html = String(html == null ? '' : html); if (html.length > 400000) html = html.slice(0, 400000);
+    var d; try { d = new DOMParser().parseFromString('<!doctype html><body>' + html, 'text/html'); } catch (e) { return ''; }
+    return walk(d.body);
+  }
+  function isHtml(t) { return /<[a-z][\s\S]*>/i.test(String(t || '')); }
+  function plain(t) {
+    t = String(t || '').trim(); if (!t) return '';
+    return t.split(/\n{2,}/).map(function (p) { return '<p>' + esc(p).replace(/\n/g, '<br>') + '</p>'; }).join('');
+  }
+  var css = '.nbrich{line-height:1.7;font-size:16px;word-break:break-word;overflow-wrap:anywhere}.nbrich:after{content:"";display:block;clear:both}' +
+    '.nbrich img{max-width:100%;height:auto;border-radius:8px}.nbrich img.pi-l{float:left;margin:4px 16px 8px 0}.nbrich img.pi-r{float:right;margin:4px 0 8px 16px}.nbrich img.pi-c{display:block;margin:12px auto;float:none}' +
+    '.nbrich h2{font-size:1.5em;margin:.8em 0 .4em;line-height:1.3}.nbrich h3{font-size:1.25em;margin:.8em 0 .4em;line-height:1.3}.nbrich h4{font-size:1.1em;margin:.8em 0 .4em}' +
+    '.nbrich a{color:#1d2fe0;text-decoration:underline}.nbrich ul{list-style:disc;margin:.5em 0 .5em 1.5em;padding:0}.nbrich ol{list-style:decimal;margin:.5em 0 .5em 1.5em;padding:0}.nbrich li{margin:.2em 0}' +
+    '.nbrich p,.nbrich div{margin:.5em 0}.nbrich hr{border:0;border-top:1px solid #d9deef;margin:1em 0}.nbrich blockquote{border-left:3px solid #cbd1e6;margin:.6em 0;padding:.2em .9em;color:#4a5170}' +
+    '@media(max-width:600px){.nbrich img.pi-l,.nbrich img.pi-r{max-width:55%}}';
+  try { var st = document.createElement('style'); st.id = 'nbrich-css'; st.textContent = css; document.head.appendChild(st); } catch (e) { }
+  window.NBRich = { clean: clean, plain: plain, isHtml: isHtml, esc: esc };
+})();
+
+/*NBSHARED:END*/</script>
+<script>/*NBFOOT:BEGIN*/
+/* NurBuy shared: website footer content (customer site shows it, admin Settings > Footer edits it).
+ *
+ *   NBFOOT.DEF            built-in texts and links (what the footer shows until the admin saves changes)
+ *   NBFOOT.merge(saved)   built-in content with the admin's saved values on top (a saved empty box stays empty)
+ *   NBFOOT.link(u)        '' or a safe link: https://..., mailto:, tel:, /path or an in-site action (#home, #deals ...)
+ *   NBFOOT.ACTIONS        the in-site action words a link can use
+ *
+ * Every text is { en, bn }: the Bangla box can stay empty and the English text is shown instead.
+ */
+var NBFOOT = (function () {
+  function T(en, bn) { return { en: en, bn: bn }; }
+  var ACTIONS = ['home', 'categories', 'deals', 'new', 'about', 'contact', 'help', 'orders', 'shipping', 'return', 'privacy'];
+  var DEF = {
+    tagline: T('Your Future, Our E-Shop', 'আপনার ভবিষ্যৎ, আমাদের ই-শপ'),
+    about: T('NurBuy is your trusted online marketplace where you can find quality products, reliable service and a better shopping experience. Shop smart, live better.',
+             'NurBuy আপনার বিশ্বস্ত অনলাইন মার্কেটপ্লেস, যেখানে পাবেন মানসম্মত পণ্য, নির্ভরযোগ্য সেবা এবং আরও ভালো কেনাকাটার অভিজ্ঞতা। স্মার্টভাবে কিনুন, ভালোভাবে বাঁচুন।'),
+    social: { facebook: '', youtube: '', instagram: '', x: '', linkedin: '' },
+    quickT: T('Quick Links', 'কুইক লিংক'),
+    quick: [
+      { t: T('Home', 'হোম'), u: '#home' },
+      { t: T('All Categories', 'সব ক্যাটাগরি'), u: '#categories' },
+      { t: T('Today’s Deals', 'আজকের ডিল'), u: '#deals' },
+      { t: T('New Arrivals', 'নতুন পণ্য'), u: '#new' },
+      { t: T('About NurBuy', 'NurBuy সম্পর্কে'), u: '#about' },
+      { t: T('Contact Us', 'যোগাযোগ'), u: '#contact' },
+      { t: T('Help & Support', 'হেল্প ও সাপোর্ট'), u: '#help' }
+    ],
+    servT: T('Our Services', 'আমাদের সেবা'),
+    serv: [
+      { t: T('Help Center', 'হেল্প সেন্টার'), s: T('Get quick answers', 'দ্রুত উত্তর পান'), u: '#help' },
+      { t: T('Track Your Order', 'অর্ডার ট্র্যাক করুন'), s: T('Check your order status', 'আপনার অর্ডারের অবস্থা দেখুন'), u: '#orders' },
+      { t: T('Shipping Information', 'শিপিং তথ্য'), s: T('Delivery & shipping details', 'ডেলিভারি ও শিপিংয়ের বিবরণ'), u: '#shipping' },
+      { t: T('Return Policy', 'রিটার্ন পলিসি'), s: T('Easy return process', 'সহজ রিটার্ন প্রক্রিয়া'), u: '#return' },
+      { t: T('Privacy Policy', 'প্রাইভেসি পলিসি'), s: T('How we protect your data', 'আপনার তথ্য কীভাবে সুরক্ষিত থাকে'), u: '#privacy' }
+    ],
+    moreT: T('More From NurBuy', 'NurBuy-র আরও'),
+    more: [
+      { t: T('NurBuy Seller', 'NurBuy সেলার'), s: T('Sell your products, grow your business', 'পণ্য বিক্রি করুন, ব্যবসা বড় করুন'), u: 'https://seller.nurbuy.com' },
+      { t: T('NurBuy Rider', 'NurBuy রাইডার'), s: T('Delivering happiness, faster', 'আনন্দ পৌঁছে দিচ্ছি, আরও দ্রুত'), u: 'https://rider.nurbuy.com' }
+    ],
+    news: {
+      on: true,
+      t: T('Newsletter', 'নিউজলেটার'),
+      s: T('Subscribe to our newsletter and get latest updates, offers and discounts.', 'নিউজলেটারে সাবস্ক্রাইব করুন এবং সর্বশেষ আপডেট, অফার ও ছাড় পান।'),
+      ph: T('Enter your email address', 'আপনার ইমেইল ঠিকানা লিখুন'),
+      btn: T('Subscribe', 'সাবস্ক্রাইব')
+    },
+    contactT: T('Contact Us', 'যোগাযোগ'),
+    addr: T('Shantoshpur, Chitalmari, Bagerhat', 'শান্তোষপুর, চিতলমারী, বাগেরহাট'),
+    phone: '+880 1712 345678',
+    email: 'support@nurbuy.com',
+    hours: T('Mon – Sun, 9:00 AM – 9:00 PM', 'সোম – রবি, সকাল ৯:০০ – রাত ৯:০০'),
+    app: {
+      t: T('Download Our App', 'আমাদের অ্যাপ ডাউনলোড করুন'),
+      s: T('Get the best shopping experience on your mobile device.', 'মোবাইলে সেরা কেনাকাটার অভিজ্ঞতা পান।'),
+      gp: '', as: ''
+    }
+  };
+
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+  /* defaults d, saved s: a key the admin saved wins, even when empty; a key never saved keeps the default */
+  function mg(d, s) {
+    if (s === undefined || s === null) return clone(d);
+    if (Array.isArray(d)) {
+      var o = [];
+      for (var i = 0; i < d.length; i++) o.push(mg(d[i], Array.isArray(s) ? s[i] : undefined));
+      return o;
+    }
+    if (d && typeof d === 'object') {
+      var r = {};
+      for (var k in d) r[k] = mg(d[k], (typeof s === 'object' && !Array.isArray(s) && Object.prototype.hasOwnProperty.call(s, k)) ? s[k] : undefined);
+      return r;
+    }
+    if (typeof d === 'boolean') return typeof s === 'boolean' ? s : d;
+    return typeof s === 'string' ? s : d;
+  }
+  function link(u) {
+    u = typeof u === 'string' ? u.trim() : '';
+    if (u.length > 500) return '';
+    return /^(https?:\/\/[^\s"'<>]+|mailto:[^\s"'<>]+|tel:[^\s"'<>]+|#[a-z]{2,12}|\/(?!\/)[^\s"'<>]*)$/i.test(u) ? u : '';
+  }
+  return { DEF: DEF, ACTIONS: ACTIONS, merge: function (saved) { return mg(DEF, saved); }, link: link };
+})();
+
+/*NBFOOT:END*/</script>
+<script src="/config.js"></script>
+</head>
+<body>
+<header><div class="wrap"><div class="hd">
+ <a class="nlogo" href="#" aria-label="NurBuy"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#1d2fe0"/><path d="M9 12h14l-1 12H10z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M12.5 12v-1a3.5 3.5 0 017 0v1" fill="none" stroke="#fff" stroke-width="2"/></svg><b>NurBuy</b></a>
+ <div class="logo" aria-label="NurBuy Minutes"><div class="lb on"><b><svg viewBox="0 0 24 24" class="lbi"><path d="M13.5 2L5 13.500h6L10 22l9-12h-6.200z"/></svg><u id="lgn">মিনিটস</u><em class="lbt" aria-hidden="true"><em class="lbtc"><i>15</i><i>30</i><i>59</i><i>15</i></em></em></b></div></div>
+ <nav class="dnav"><a href="#">হোম</a><a href="#">ক্যাটাগরি</a><a href="#hot">অফার</a><a href="#shops">দোকান</a></nav>
+ <div class="loc" id="loc"><button class="lt" id="lt"><svg viewBox="0 0 24 24"><path d="M12 22s7-6.5 7-12a7 7 0 00-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.6"/></svg><span class="lw"><small id="lds">Deliver to</small><b id="lcn">Dhaka</b></span><svg class="cv" viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button><div class="lm" id="lm"></div></div>
+ <div class="search"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1d2fe0" stroke-width="2.4" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M15.5 15.5L21 21"/></svg><input placeholder="পণ্য খুজুন......" aria-label="সার্চ"><button>খুঁজুন</button></div>
+<div class="dbar">
+ <div class="dw" id="dw"><button class="di" id="dwb"><svg viewBox="0 0 24 24"><path d="M3 5h8M7 3v2M5 5c1 4 4 7 7 8M11 5c-1 4-4 7-8 9"/><path d="M12 20l4-9 4 9M13.5 17h5"/></svg><span class="dl" id="lgl">English</span></button><div class="lm"><button data-l="bn">বাংলা</button><button data-l="en">English</button></div></div>
+ <button class="di" id="dlog"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18.5c1.5-2.5 3.2-3.5 5.5-3.5s4 1 5.5 3.5"/></svg><span class="dl">Log in</span></button>
+ <button class="di" id="dord"><svg viewBox="0 0 24 24"><path d="M4 8l8-5 8 5v10l-8 4-8-4zM4 8l8 4 8-4M12 12v10"/></svg><span class="dl">Orders</span></button>
+ <button class="di" id="dwal"><span class="wt-ib"><svg viewBox="0 0 24 24"><path d="M5 7V6a2 2 0 012-2h10v3"/><rect x="3" y="7" width="18" height="13" rx="2.5"/><circle cx="16.5" cy="13.5" r="1.2"/></svg><img class="wt-ic" src="https://img.icons8.com/?size=100&id=7991&format=png&color=000000" alt="" width="26" height="26" onload="this.previousElementSibling.style.display='none';this.style.display='block'" onerror="this.remove()" style="display:none"></span><span class="dl">Wallet</span></button>
+ <button class="di" id="dwl"><svg viewBox="0 0 24 24"><path d="M12 20s-8-5-8-11a4.5 4.5 0 018-2.8A4.5 4.5 0 0120 9c0 6-8 11-8 11z"/></svg><span class="dl">Wishlist</span></button>
+ <button class="di" id="dcart"><svg viewBox="0 0 24 24"><path d="M2 3h3l2.5 11h11L21 6H6"/><circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/></svg><span class="dl">Cart</span><em class="cc">0</em></button>
+</div>
+ <div class="icons"><button class="ic lgmb" id="lgmb" aria-label="Language"><svg viewBox="0 0 24 24"><path d="M3 5h8M7 3v2M5 5c1 4 4 7 7 8M11 5c-1 4-4 7-8 9"/><path d="M12 20l4-9 4 9M13.5 17h5"/></svg></button><button class="ic msgr" aria-label="মেসেজ"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.5 2 2 6.2 2 11.5c0 2.9 1.3 5.4 3.4 7.1V22l3.1-1.7c1 .3 2 .4 3.5.4 5.5 0 10-4.2 10-9.5S17.5 2 12 2z"/><path fill="#fff" d="M5.8 14.2l4.4-4.7 2.6 2.5 4.2-2.5-4.4 4.7-2.6-2.5z"/></svg></button><button class="ic" aria-label="নোটিফিকেশন"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 22a2.5 2.5 0 002.4-2h-4.8A2.5 2.5 0 0012 22zm7-6v-5c0-3.3-2.2-6-5.3-6.8V3.5a1.7 1.7 0 00-3.4 0v.7C7.2 5 5 7.7 5 11v5l-2 2v1h18v-1z"/></svg></button><button class="ic hcart" id="hcart" aria-label="Cart"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 18a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4zM1 2v2h2l3.6 7.6-1.4 2.4A2 2 0 007 17h12v-2H7.4l1.1-2h7.5a2 2 0 001.7-1l3.6-6.5A1 1 0 0020.4 4H5.2l-.9-2z"/></svg><em class="cc">0</em></button></div>
+</div></div><div class="cw" id="cw"><div class="wrap cnw"><button type="button" class="cn-all" id="cnall">সব</button><nav class="cn" id="cn"></nav></div><div class="mega" id="mega"></div></div></header>
+
+<main class="wrap">
+<section id="authv" aria-label="Login"></section>
+<section id="cartv" aria-label="Cart"></section>
+<section id="wishv" aria-label="Wishlist"></section>
+<section id="pdv" aria-label="Product"><div class="pd" id="pd"></div><div class="bsslot" id="bspd" hidden></div><div id="pdrel"></div><div id="pdrp"></div></section>
+<section id="shopv" aria-label="Shops"><div class="shv-w"><div class="shv-hd"><div class="shv-ht"><button class="shv-bk" id="shvbk" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><h2 id="shvh"></h2><span class="shv-n" id="shvn"></span></div><label class="shv-sr"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="shvq" type="search" autocomplete="off"></label></div><div class="shv-ch" id="shvch"></div><div class="shv-g" id="shvg"></div></div></section>
+<section id="walv" aria-label="Wallet"></section>
+<section id="ordv" aria-label="Orders"><div class="ord-w"><aside class="ord-side" id="ordside"></aside><div class="ord-main"><div class="ord-hd"><div class="ord-ht"><button class="ord-bk" id="ordbk" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><h1 id="ordh"></h1></div><div class="ord-fl"><label class="ord-sr"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="ordq" type="search" autocomplete="off"></label><select id="ordr" aria-label="Date range"></select></div></div><div class="oxo" id="ordov"></div><div class="ord-tabs" id="ordtabs"></div><div id="ordlist"></div></div></div></section>
+<section id="profv" aria-label="Profile"><div class="pf"><div class="pcv"><svg class="pbg" viewBox="0 0 390 202" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="pg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0a2c9e"/><stop offset=".55" stop-color="#0b4bd2"/><stop offset="1" stop-color="#0a66f2"/></linearGradient><pattern id="pdt" width="9" height="9" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.1" fill="#6aa0ff" fill-opacity=".75"/></pattern></defs><rect width="390" height="202" fill="url(#pg1)"/><path d="M-10 70C40 44 92 84 124 134S206 196 270 214H-10Z" fill="#0a38b2" fill-opacity=".55"/><path d="M40 -6C110 26 180 22 250 -6Z" fill="#2a78ff" fill-opacity=".3"/><path d="M268 210V74c0-16 18-24 31-13l70 56v93z" fill="#0a34a8" fill-opacity=".62"/><path d="M286 210V84c0-8 9-12 15-7l62 50" fill="none" stroke="#2f7dff" stroke-opacity=".5" stroke-width="3"/><rect x="338" y="54" width="46" height="36" fill="url(#pdt)"/><rect x="12" y="128" width="46" height="40" fill="url(#pdt)"/></svg><button class="pbk" id="pback" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><button class="pep" id="pep"></button><button class="pcx" id="pcx" aria-label="Remove cover photo">×</button><button class="pcc" id="pcc" aria-label="Change cover photo"></button><input type="file" id="pcfile" accept="image/*" hidden><button class="pav" id="pav" aria-label="Change photo"></button><button class="pcam" id="pcam" aria-label="Change photo"><svg class="uic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg></button><input type="file" id="pfile" accept="image/*" hidden></div><h2 class="pnm" id="pnm"></h2><div class="psub" id="psb"></div><div class="pchips" id="pchips"></div><div class="psh" id="psh"></div></div></section>
+<section id="allv" aria-label="All products"><div class="ah"><button id="abk"></button><h2 id="att"></h2><span id="acnt"></span></div><div class="bsslot" id="bsct" hidden></div><div class="ach" id="ach" role="tablist"></div><div class="ag" id="ag"></div><div class="am"><button id="amore"></button></div></section>
+<div id="minv">
+<div class="strip" id="strip"></div>
+<div class="hw"><section class="hero" id="hero" aria-label="ব্যানার"></section><aside class="sp" id="sp" aria-label="Sponsored"></aside></div>
+<section class="cats" id="cats"></section>
+<aside class="sp sp-m" id="spm" aria-label="Sponsored"></aside>
+<section class="ob" id="ob" aria-label="অফার"></section>
+<section class="bsslot" id="bspm" aria-label="অফার" hidden></section>
+</div>
+<div class="sh" id="hot"><h3><svg class="uic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c1 3 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 1-9z"/></svg> Hot Deals</h3><a href="#" data-all="hot">View All &gt;</a></div>
+<div class="row" id="hotr"></div>
+<div class="sh"><h3>Best Selling Product</h3><a href="#" data-all="best">View All &gt;</a></div>
+<div class="row" id="bestr"></div>
+<div id="recsec" style="display:none"><div class="sh"><h3 id="recttl">Recommended for You</h3></div><div class="row" id="recr"></div></div>
+<div id="shopsec"><div class="sh" id="shops"><h3>Best Shop</h3><a href="#" id="shopall">View All &gt;</a></div>
+<div class="shops" id="shopl"></div></div>
+<div id="newsec" style="display:none"><div class="sh"><h3><svg class="uic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg> নতুন প্রোডাক্ট</h3><a href="#" data-all="new">View All &gt;</a></div><div class="row" id="newr"></div></div>
+<div id="histsec"><div class="sh"><h3><svg class="uic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> আপনার ব্রাউজিং হিস্টরি</h3><span class="hact"><a href="#" id="hall">View All &gt;</a><a href="#" id="hclr">মুছুন</a></span></div><div class="hist" id="hist"></div></div>
+<section id="admv" aria-label="Support Inbox"></section><section id="notifv" aria-label="Notifications"></section><section id="sellv" aria-label="Seller profile"></section><section id="histv" aria-label="Browsing history"></section><section id="catsv" aria-label="All categories"></section><section id="polv" aria-label="Page"></section></main>
+<footer class="ft" id="ft"><div class="wrap" id="ftw"></div></footer>
+
+<nav class="bn"><a class="on" href="#"><svg viewBox="0 0 24 24"><path d="M12 3L2 12h3v8h5v-6h4v6h5v-8h3z"/></svg>Home</a><a href="#"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>Category</a><a href="#" id="bw" class="bw"><img src="https://img.icons8.com/?size=100&id=7991&format=png&color=000000" alt="" width="26" height="26" onerror="this.outerHTML='<svg viewBox=&quot;0 0 24 24&quot;><path d=&quot;M3 6a2 2 0 012-2h13v3H5v1h15a1 1 0 011 1v9a2 2 0 01-2 2H5a2 2 0 01-2-2zm14 7a1.3 1.3 0 100 2.6 1.3 1.3 0 000-2.6z&quot;/></svg>'"><span>Wallet</span></a><a href="#" id="bc"><svg viewBox="0 0 24 24"><path d="M7 18a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4zM1 2v2h2l3.6 7.6-1.4 2.4A2 2 0 007 17h12v-2H7.4l1.1-2h7.5a2 2 0 001.7-1l3.6-6.5A1 1 0 0020.4 4H5.2l-.9-2z"/></svg>Cart<em class="cc">0</em></a><a href="#"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M5 2h14a1 1 0 011 1v19l-3-2-2.5 2-2.5-2-2.5 2L7 20l-3 2V3a1 1 0 011-1zm3 5v2h8V7zm0 4v2h8v-2zm0 4v2h5v-2z"/></svg>Orders</a><a href="#"><svg viewBox="0 0 24 24"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zm-8 10v-2a6 6 0 016-6h4a6 6 0 016 6v2z"/></svg>Profile</a></nav>
+
+<div class="cp" id="cp"><div class="cph"><button id="cpbk" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button><h2 id="cpt"></h2></div><div class="cpb" id="cpb"></div></div>
+<div class="mo" id="pm"><div class="pmc" role="dialog"><h3 id="pmt"></h3><div id="pmb"></div><div class="pmf"><button id="pmc"></button><button id="pms"></button></div></div></div>
+<div class="mo" id="mo"><div class="mc2" role="dialog" aria-label="Add new address">
+<div class="mhd"><button id="mback" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button><h2>নতুন ঠিকানা যোগ করুন</h2><button class="x" id="mx" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+<div class="mapw" id="mapw"><svg class="mp" id="msvg"><g id="mg"></g></svg>
+<div class="ms"><div class="in"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#777" stroke-width="2" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M15.5 15.5L21 21"/></svg><input id="msi" placeholder="আপনার ঠিকানা, ভবন বা এলাকা খুঁজুন…" autocomplete="off"></div><div class="sr" id="msr"></div></div>
+<button class="ul" id="mul"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg><span>বর্তমান লোকেশন ব্যবহার করুন</span></button>
+<div class="zm"><button id="mzi" aria-label="Zoom in">+</button><button id="mzo" aria-label="Zoom out">−</button></div>
+<div class="pin"><div class="tp">আপনার অর্ডার এখানে পৌঁছে দেওয়া হবে</div><svg viewBox="0 0 36 50"><path d="M18 1C9 1 2 8 2 17c0 12 16 31 16 31s16-19 16-31C34 8 27 1 18 1z" fill="#111"/><circle cx="18" cy="17" r="6" fill="#fff"/></svg></div>
+<div class="mmsg" id="mmsg"></div></div>
+<div class="mb"><div class="pi"><svg viewBox="0 0 24 24" style="fill:#111;stroke:none"><path d="M12 2a6 6 0 00-6 6c0 4.5 6 12 6 12s6-7.500 6-12a6 6 0 00-6-6zm0 8.500a2.500 2.500 0 110-5 2.500 2.500 0 010 5z"/></svg></div><div class="tx"><small>বর্তমান লোকেশন</small><b id="mpn">Gulshan</b><span id="mps">ঢাকা, বাংলাদেশ</span></div><button class="cf" id="mcf">লোকেশন নিশ্চিত করুন</button></div>
+</div></div>
+<div id="chatw"></div>
+<script id="nbbs-src">
+/*NBBS:BEGIN - generated from shared/bs-render.js by customer/sync-bs.sh, do not edit here*/
+/* NurBuy Banner Studio renderer (shared by the admin Studio and the website; see docs/BANNER_STUDIO.md).
+   Designs are stored in design pixels; everything is printed in cqw so a banner scales with its box.
+   Every value read from a design is sanitised here before it reaches HTML or CSS. */
+(function(W){
+if(W.NBBS)return;
+var DOC=document,K=1,UID=0;
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function num(v,d,mn,mx){v=parseFloat(v);if(!isFinite(v))v=d;if(mn!=null&&v<mn)v=mn;if(mx!=null&&v>mx)v=mx;return v}
+function col(v,d){if(typeof v!='string')return d;v=v.trim();return /^(#[0-9a-f]{3,8}|rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+%?\s*)?\)|hsla?\(\s*[\d.]+(deg)?\s*,\s*[\d.]+%\s*,\s*[\d.]+%\s*(,\s*[\d.]+%?\s*)?\)|transparent|[a-z]{3,20})$/i.test(v)?v:d}
+function url(u){if(typeof u!='string')return '';u=u.trim();if(!u||u.length>3e6)return '';
+if(/^data:/i.test(u))return /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,[a-z0-9+\/=\s]+$/i.test(u)?u:'';
+var t=u.replace(/[\u0000-\u0020\u007f]/g,'');if(t.indexOf('\\')>-1||t.slice(0,2)=='//')return '';if(/^[a-z][a-z0-9+.\-]*:/i.test(t))return /^https?:\/\/[^\/]/i.test(t)?u:'';return u}
+function link(u){if(typeof u!='string')return '';u=u.replace(/[\u0000-\u0020\u007f]/g,'');if(!u||u.length>1000||u.indexOf('\\')>-1||u.slice(0,2)=='//')return '';if(/^[a-z][a-z0-9+.\-]*:/i.test(u))return /^(https?:\/\/[^\/]|mailto:|tel:)/i.test(u)?u:'';return u}
+function cssUrl(u){return "url('"+u.replace(/['"()\\\s<>]/g,function(c){return '%'+('0'+c.charCodeAt(0).toString(16)).slice(-2)})+"')"}
+function fam(v){return typeof v=='string'&&/^[A-Za-z0-9 \-]{1,60}$/.test(v)?v:''}
+function U(px){return (num(px,0)*K).toFixed(3)+'cqw'}
+function pick(o,list,d){return list.indexOf(o)>=0?o:d}
+
+/* ---------- fonts ---------- */
+var FONTS=[
+{f:'Noto Sans Bengali',c:'bn',k:'sans',w:'100..900'},{f:'Noto Serif Bengali',c:'bn',k:'serif',w:'100..900'},{f:'Hind Siliguri',c:'bn',k:'sans',w:'300;400;500;600;700'},
+{f:'Tiro Bangla',c:'bn',k:'serif',w:'400',i:1},{f:'Anek Bangla',c:'bn',k:'sans',w:'100..800'},{f:'Baloo Da 2',c:'bn',k:'display',w:'400..800'},{f:'Galada',c:'bn',k:'display',w:'400'},
+{f:'Mina',c:'bn',k:'sans',w:'400;700'},{f:'Atma',c:'bn',k:'display',w:'300;400;500;600;700'},
+{f:'Kalpurush',c:'bn',k:'sans',w:'400',srv:1},{f:'SolaimanLipi',c:'bn',k:'sans',w:'400',up:1},{f:'Siyam Rupali',c:'bn',k:'sans',w:'400',up:1},{f:'AdorshoLipi',c:'bn',k:'sans',w:'400',up:1},
+{f:'Poppins',c:'en',k:'sans',w:'100;200;300;400;500;600;700;800;900',i:1},{f:'Montserrat',c:'en',k:'sans',w:'100..900',i:1},{f:'Roboto',c:'en',k:'sans',w:'100..900',i:1},
+{f:'Inter',c:'en',k:'sans',w:'100..900',i:1},{f:'Open Sans',c:'en',k:'sans',w:'300..800',i:1},{f:'Lato',c:'en',k:'sans',w:'100;300;400;700;900',i:1},
+{f:'Oswald',c:'en',k:'display',w:'200..700'},{f:'Bebas Neue',c:'en',k:'display',w:'400'},{f:'Playfair Display',c:'en',k:'serif',w:'400..900',i:1},{f:'Raleway',c:'en',k:'sans',w:'100..900',i:1}];
+var FBY={};FONTS.forEach(function(f){FBY[f.f]=f});
+var CUSTOM={},LOADED={},SRV='';
+function gUrl(f){var n=f.f.replace(/ /g,'+'),w=f.w,ax='';
+if(f.i){if(w=='400')ax=':ital@0;1';else{var p=w.indexOf('..')>0?[w]:w.split(';');ax=':ital,wght@'+p.map(function(x){return '0,'+x}).concat(p.map(function(x){return '1,'+x})).join(';')}}
+else if(w!='400')ax=':wght@'+w;return 'https://fonts.googleapis.com/css2?family='+n+ax+'&display=swap'}
+function addCss(id,css){var s=DOC.getElementById(id);if(!s){s=DOC.createElement('style');s.id=id;DOC.head.appendChild(s)}s.textContent=css}
+function face(f,u){return "@font-face{font-family:'"+f+"';src:"+cssUrl(u)+";font-display:swap}"}
+/** Load the given font families (Google, server or uploaded). Unknown names are ignored. */
+function useFonts(list){var css=[];(list||[]).forEach(function(n){n=fam(n);if(!n||LOADED[n])return;var f=FBY[n];
+if(CUSTOM[n]){LOADED[n]=1;css.push(face(n,CUSTOM[n]));return}
+if(f&&f.srv&&SRV){LOADED[n]=1;css.push(face(n,SRV+'/bs/f/kalpurush'));return}
+if(f&&!f.srv&&!f.up){LOADED[n]=1;var l=DOC.createElement('link');l.rel='stylesheet';l.href=gUrl(f);l.setAttribute('data-bsf',n);DOC.head.appendChild(l)}});
+if(css.length){var s=DOC.createElement('style');s.setAttribute('data-bsf','1');s.textContent=css.join('');DOC.head.appendChild(s)}}
+/** Register uploaded fonts: [{f:family,u:url}] (from /bs/banners or the media library). */
+function addFonts(list){(list||[]).forEach(function(x){var n=fam(x&&x.f),u=url(x&&x.u);if(!n||!u)return;if(n=='Kalpurush'&&!CUSTOM[n]){SRV=u.replace(/\/bs\/f\/kalpurush$/,'');return}if(CUSTOM[n]===u)return;CUSTOM[n]=u;if(LOADED[n]){delete LOADED[n]}})}
+function hasFont(n){var f=FBY[n];return !!(CUSTOM[n]||(f&&!f.up&&(!f.srv||SRV))||(!f&&CUSTOM[n]))}
+function stack(n){n=fam(n);return (n?"'"+n+"',":'')+"'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"}
+function fontsOf(doc){var s={'Noto Sans Bengali':1};each(doc,function(l){if(l.ff)s[l.ff]=1;if(l.f2)s[l.f2]=1});return Object.keys(s)}
+function each(doc,fn){var d=doc&&doc.designs||{};['desktop','tablet','mobile'].forEach(function(k){var ds=d[k];if(ds&&Array.isArray(ds.layers))ds.layers.forEach(fn)})}
+/** @font-face CSS with the font files inlined as data URLs, for image export (html-to-image).
+ * Fetches only the faces a design needs (Bengali and Latin subsets, italic only when used); a font that
+ * cannot be fetched in time is skipped so the export still finishes with the browser's fallback. */
+function embedCss(doc,ms){ms=ms||10000;var it=false;each(doc,function(l){if(l.it)it=true});
+function tf(u,as){var c=W.AbortController?new AbortController():null,t=setTimeout(function(){c&&c.abort()},ms);
+return fetch(u,c?{signal:c.signal}:{}).then(function(r){if(!r.ok)throw Error(r.status);return as=='t'?r.text():r.blob()}).then(function(x){clearTimeout(t);return x},function(e){clearTimeout(t);throw e})}
+function du(u){return tf(u,'b').then(function(b){return new Promise(function(res,rej){var fr=new FileReader();fr.onload=function(){res(fr.result)};fr.onerror=rej;fr.readAsDataURL(b)})})}
+return Promise.all(fontsOf(doc).map(function(n){var f=FBY[n],u=CUSTOM[n]||(f&&f.srv&&SRV?SRV+'/bs/f/kalpurush':'');
+if(u)return du(u).then(function(d){return face(n,d)}).catch(function(){return ''});
+if(!f||f.up)return Promise.resolve('');
+return tf(gUrl(f),'t').then(function(css){var parts=css.split(/(?=\/\*[^*]*\*\/\s*@font-face)/),keep=parts.filter(function(x){var m=x.match(/^\/\*\s*([\w-]+)\s*\*\//);return (!m||m[1]=='bengali'||m[1]=='latin')&&(it||!/font-style:\s*italic/.test(x))});
+return Promise.all(keep.map(function(x){var m=x.match(/url\(([^)]+)\)/);if(!m)return '';return du(m[1].replace(/["']/g,'')).then(function(d){return x.replace(m[0],'url('+d+')')}).catch(function(){return ''})})).then(function(a){return a.join('\n')})}).catch(function(){return ''})})).then(function(a){return a.join('\n')})}
+/** Resolves once the fonts a design uses are loaded (used before export). */
+function fontsReady(doc){useFonts(fontsOf(doc));if(!DOC.fonts||!DOC.fonts.load)return Promise.resolve();
+return Promise.all(fontsOf(doc).map(function(f){return Promise.all(['400','700'].map(function(w){return DOC.fonts.load(w+" 24px '"+f+"'",'অআ Aa').catch(function(){})}))})).then(function(){return DOC.fonts.ready})}
+
+/* ---------- paint ---------- */
+function stops(s){if(!Array.isArray(s)||s.length<2)s=[{c:'#ffffff',p:0},{c:'#000000',p:100}];return s.slice(0,8).map(function(x){return col(x&&x.c,'#000')+' '+num(x&&x.p,0,0,100)+'%'}).join(',')}
+function grad(g){if(!g||typeof g!='object')return '';if(g.t=='radial')return 'radial-gradient('+(g.sh=='ellipse'?'ellipse':'circle')+' at '+num(g.x,50,0,100)+'% '+num(g.y,50,0,100)+'%,'+stops(g.s)+')';return 'linear-gradient('+num(g.a,90,-360,360)+'deg,'+stops(g.s)+')'}
+/** fill = colour string or {t:'linear'|'radial',...} */
+function paint(v,d){if(v&&typeof v=='object')return grad(v)||d;return col(v,d)}
+function shadow(s,txt){if(!s||typeof s!='object'||!s.on)return '';return U(s.x||0)+' '+U(s.y||0)+' '+U(Math.max(0,num(s.b,10)))+(txt?' ':' '+U(num(s.s,0))+' ')+col(s.c,'rgba(0,0,0,.35)')}
+function dshadow(s){if(!s||typeof s!='object'||!s.on)return '';return 'drop-shadow('+U(s.x||0)+' '+U(s.y||0)+' '+U(Math.max(0,num(s.b,10)))+' '+col(s.c,'rgba(0,0,0,.35)')+')'}
+
+/* ---------- animations ---------- */
+var EASE={ease:'ease',in:'ease-in',out:'ease-out',inout:'ease-in-out',linear:'linear',smooth:'cubic-bezier(.22,1,.36,1)',back:'cubic-bezier(.34,1.56,.64,1)',bounce:'cubic-bezier(.68,-.55,.27,1.55)'};
+var AIN={fade:'bsi-fade',fadeIn:'bsi-fadein',fadeUp:'bsi-move',fadeDown:'bsi-move',fadeLeft:'bsi-move',fadeRight:'bsi-move',zoomIn:'bsi-zin',zoomOut:'bsi-zout',slide:'bsi-slide',bounce:'bsi-bounce',rotate:'bsi-rot',pop:'bsi-pop',blur:'bsi-blur',flip:'bsi-flip',rise:'bsi-rise',pan:'bsi-pan',wipe:'bsi-wipe',succession:'bsi-suc',breathe:'bsi-brt',baseline:'bsi-base',drift:'bsi-drift',tectonic:'bsi-tect',tumble:'bsi-tumb',neon:'bsi-neon',stomp:'bsi-stomp',scrapbook:'bsi-scrap',skew:'bsi-skew',elastic:'bsi-elas',spin:'bsi-spin',flipX:'bsi-flipx',swoop:'bsi-swoop',curtain:'bsi-curt',iris:'bsi-iris',zoomBlur:'bsi-zblur'};
+var AOUT={fade:'bso-fade',slide:'bso-slide',zoom:'bso-zoom',rotate:'bso-rot',fadeDown:'bso-move',fadeUp:'bso-move',wipe:'bso-wipe',rise:'bso-rise',pan:'bso-move',drift:'bso-drift',blur:'bso-blur',tumble:'bso-tumb',pop:'bso-pop',shrink:'bso-shr',spin:'bso-spin',flip:'bso-flip',curtain:'bso-curt',iris:'bso-iris',squeeze:'bso-sq',fall:'bso-fall',neon:'bso-neon',breathe:'bso-brt'};
+/* animations that honour a direction (left, right, top, bottom); the value is the default */
+var AIND={slide:'left',pan:'left',drift:'left',wipe:'left'},AOUD={slide:'right',pan:'right',drift:'right',wipe:'right'},WIPE={left:'inset(0 100% 0 0)',right:'inset(0 0 0 100%)',top:'inset(0 0 100% 0)',bottom:'inset(100% 0 0 0)'};
+var ALOOP={float:'bsl-float',pulse:'bsl-pulse',shake:'bsl-shake',bounce:'bsl-bounce',rotate:'bsl-rot',zoom:'bsl-zoom',glow:'bsl-glow',swing:'bsl-swing',blink:'bsl-blink',flicker:'bsl-flk',wiggle:'bsl-wig',breathe:'bsl-brt',tada:'bsl-tada',heartbeat:'bsl-hb',jello:'bsl-jel',rubber:'bsl-rub',flash:'bsl-flash',sway:'bsl-sway',wobble:'bsl-wob',spin3d:'bsl-s3d',hue:'bsl-hue'};
+var DIRV={left:[-1,0],right:[1,0],top:[0,-1],bottom:[0,1]};
+/* text animations: [keyframes, unit (c letter, w word, l line), stagger ms, duration ms, easing] */
+var AT={typewriter:['bst-type','c',70,40,'linear'],ascend:['bst-asc','w',120,700,'smooth'],shift:['bst-shift','c',40,500,'smooth'],merge:['bst-merge','c',30,700,'smooth'],block:['bst-blkt','w',160,800,'inout'],
+burst:['bst-burst','c',40,600,'back'],bounce:['bst-bnc','c',50,800,'ease'],roll:['bst-roll','c',45,650,'smooth'],skate:['bst-skate','w',110,700,'smooth'],spread:['bst-spread','c',0,900,'smooth'],clarify:['bst-clar','w',90,900,'ease']};
+/* Bengali conjuncts and vowel signs stay with their letter so the text still shapes correctly */
+var GRX=/[\u0980-\u09ff](?:[\u0981-\u0983\u09bc\u09be-\u09cc\u09d7\u200c\u200d]|\u09cd[\u0980-\u09ff]?)*|[\ud800-\udbff][\udc00-\udfff]|[\s\S]/g;
+function hsh(k){var x=Math.sin(k*12.9898+78.233)*43758.5453;return x-Math.floor(x)}
+/** Display lines of a text layer (list markers added). */
+function tLines(l,t){var a=String(t==null?'':t).split('\n'),bn=l.dg=='bn'||/[\u0980-\u09ff]/.test(t);if(l.lst!='bullet'&&l.lst!='number')return a.map(function(x){return ['',x]});
+return a.map(function(x,i){return [l.lst=='bullet'?'\u2022 ':digits(i+1,bn)+'. ',x]})}
+function tUnits(s,by){if(by=='l')return s?[[s,1]]:[];var out=[];s.split(/(\s+)/).forEach(function(w){if(!w)return;if(/^\s+$/.test(w)){out.push([w,0]);return}if(by=='w'){out.push([w,1]);return}out.push([w.match(GRX)||[],2])});return out}
+function tCount(l,t){var by=pick(l.an.t.by,['c','w','l'],AT[l.an.t.k][1]),n=0;tLines(l,t).forEach(function(x){tUnits(x[0]+x[1],by).forEach(function(u){n+=u[1]==2?u[0].length:u[1]})});return Math.max(1,n)}
+function etaSub(t,l){return t.indexOf('{eta}')>-1?t.split('{eta}').join(digits(num(W.NBBS&&W.NBBS.vars&&W.NBBS.vars.eta,59,1,999),l.dg=='bn')):t}
+function tText(l){if(l.bind&&l.bind.f)return l.txt&&l.txt.indexOf('{v}')>-1?l.txt.split('{v}').join('00000'):'00000';return etaSub(typeof l.txt=='string'?l.txt:'',l)}
+/** Text split into animated letters, words or lines (null when the layer has no text animation). */
+function tAnim(l,o,t){var a=l.an&&l.an.t;if(o.static||l.t!='text'||!a||!AT[a.k])return null;var P=AT[a.k],by=pick(a.by,['c','w','l'],P[1]),sp=num(a.sp,1,.1,10),d=ms(a.d,P[3])/sp,stg=ms(a.stg,P[2])/sp,
+T=timing(l),base=T[0]+ms(a.dl,0),ez=EASE[a.e]||EASE[P[4]],cnt=a.ln?'infinite':num(a.n,1,1,20)|0,lines=tLines(l,t),N=0,U2=[];
+lines.forEach(function(x){U2.push(tUnits(x[0]+x[1],by))});U2.forEach(function(u){u.forEach(function(x){N+=x[1]==2?x[0].length:x[1]})});
+var ord=pick(a.ord,['fwd','rev','mid','rnd'],'fwd'),rank=[],i;for(i=0;i<N;i++)rank.push(ord=='rev'?N-1-i:ord=='mid'?Math.round(Math.abs(i-(N-1)/2)):i);
+if(ord=='rnd'){var ix=rank.map(function(x,j){return j}).sort(function(p,q){return hsh(p)-hsh(q)});ix.forEach(function(j,r){rank[j]=r})}
+var g=l.grad&&typeof l.grad=='object'&&l.grad.on?grad(l.grad):'',bc=col(a.col,col(l.c,'#4a52c8')),k=0,hasL=lines.length>1||l.lst=='bullet'||l.lst=='number';
+function unit(s){var dl=base+rank[k]*stg,st=['animation:'+anim(P[0],d,ez,dl,cnt,'normal','both',o.t)];if(a.k=='merge')st.push('--tx:'+(k%2?'1.6em':'-1.6em'));if(a.k=='burst')st.push('--tr:'+Math.round(hsh(k+3)*140-70)+'deg');if(a.k=='spread')st.push('--sp:'+(((N-1)/2-k)*.45).toFixed(2)+'em');
+if(g)st.push('background:'+g,'background-size:'+(N*100)+'% 100%','background-position:'+(N>1?(k/(N-1)*100).toFixed(2):0)+'% 0','-webkit-background-clip:text','background-clip:text','color:transparent','-webkit-text-fill-color:transparent');
+var h;if(a.k=='block'){h='<span class="bsch" style="position:relative"><span class="bsch" style="'+esc(st.join(';'))+'">'+esc(s)+'</span><i class="bsbk" style="'+esc('background:'+bc+';animation:'+anim('bst-blk',d,ez,dl,cnt,'normal','both',o.t))+'"></i></span>'}
+else h='<span class="bsch" style="'+esc(st.join(';'))+'">'+esc(s)+'</span>';k++;return h}
+var out=U2.map(function(u,li){var h=u.map(function(x){if(!x[1])return esc(x[0]);if(x[1]==2)return '<span class="bsw">'+x[0].map(unit).join('')+'</span>';return unit(x[0])}).join('');
+return hasL?'<span class="bsln" style="'+(l.lst=='bullet'||l.lst=='number'?'padding-left:1.15em;text-indent:-1.15em':'')+'">'+(h||'&#8203;')+'</span>':h}).join('');
+var ik=num(a.int,1,.1,1.4);return '<span style="'+esc((g?['color:'+col(l.c,'#111111')]:spanCss(l)).concat(ik!=1?['--ik:'+ik]:[]).join(';'))+'">'+out+'</span>'}
+/* custom keyframes: l.kf=[{t (ms after the layer start), x, y, s, sx, sy, r, o, b, e}] */
+var KFC=[];
+function kfAnim(l,t){var A=Array.isArray(l.kf)?l.kf.filter(function(k){return k&&typeof k=='object'}).slice(0,40):[];if(A.length<2)return '';A=A.map(function(k){return {t:ms(k.t,0),k:k}}).sort(function(p,q){return p.t-q.t});
+var t0=A[0].t,t1=A[A.length-1].t,dur=Math.max(1,t1-t0),body=A.map(function(x){var k=x.k,s=num(k.s,100,0,2000)/100,tr='translate('+U(num(k.x,0,-8000,8000))+','+U(num(k.y,0,-8000,8000))+') rotate('+num(k.r,0,-3600,3600)+'deg) scale('+(s*num(k.sx,100,0,2000)/100).toFixed(4)+','+(s*num(k.sy,100,0,2000)/100).toFixed(4)+')';
+return ((x.t-t0)/dur*100).toFixed(3)+'%{transform:'+tr+';opacity:'+num(k.o,1,0,1)+';filter:blur('+U(num(k.b,0,0,200))+');animation-timing-function:'+(EASE[k.e]||EASE.inout)+'}'}).join(''),
+nm='bsk'+(function(s){var h=5381;for(var i=0;i<s.length;i++)h=(h*33^s.charCodeAt(i))>>>0;return h.toString(36)})(body+K);KFC.push('@keyframes '+nm+'{'+body+'}');
+return anim(nm,dur,'linear',ms(l.st,0)+t0,l.kfn===0||l.kfn==='0'?'infinite':num(l.kfn,1,1,50)|0,l.kfa?'alternate':'normal','both',t)}
+function ms(v,d){return Math.round(num(v,d,0,600000))}
+function anim(name,dur,ease,delay,count,dir,fill,t){if(t!=null)delay-=t;return name+' '+Math.max(1,dur)+'ms '+ease+' '+Math.round(delay)+'ms '+count+' '+dir+' '+fill+(t!=null?' paused':'')}
+/** Timing for one layer: [start, entranceEnd, exitStart|null, exitEnd|null] in ms. */
+function timing(l){var an=l.an||{},i=an.i||{},o=an.o||{},st=ms(l.st,0),sp=num(i.sp,1,.1,10),ie=AIN[i.k]?st+ms(i.dl,0)+ms(i.d,700)/sp*num(i.n,1,1,20):st,en=l.en!=null&&l.en!==''?ms(l.en,0):null,os=num(o.sp,1,.1,10),ta=an.t;
+if(l.t=='text'&&ta&&AT[ta.k]){var P=AT[ta.k],ts=num(ta.sp,1,.1,10);ie=Math.max(ie,st+ms(ta.dl,0)+((tCount(l,tText(l))-1)*ms(ta.stg,P[2])+ms(ta.d,P[3])*(ta.ln?1:num(ta.n,1,1,20)))/ts)}
+if(Array.isArray(l.kf)&&l.kf.length>1){var km=0,kn=l.kfn===0||l.kfn==='0'?1:num(l.kfn,1,1,50);l.kf.forEach(function(k){if(k)km=Math.max(km,ms(k.t,0))});ie=Math.max(ie,st+km*(l.kfa?kn:1)+(l.kfa?0:(kn-1)*km))}
+return [st,ie,en,en==null?null:en+(AOUT[o.k]?ms(o.d,600)/os:1)]}
+function animCss(l,t,vars){var an=l.an||{},i=an.i||{},o=an.o||{},c=an.c||{},T=timing(l),list=[],v=[];
+if(AIN[i.k]){var sp=num(i.sp,1,.1,10),d=ms(i.d,700)/sp,dir=i.k=='slide'?(DIRV[i.dir]||DIRV.left):i.k=='fadeUp'?[0,1]:i.k=='fadeDown'?[0,-1]:i.k=='fadeLeft'?[1,0]:i.k=='fadeRight'?[-1,0]:[0,0],dist=num(i.dist,40,0,2000);
+var ikd=num(i.int,1,.1,1.4);if(i.k=='slide')v.push('--ix:'+Math.round(dir[0]*110*ikd)+'%','--iy:'+Math.round(dir[1]*110*ikd)+'%');else if(/^fade(Up|Down|Left|Right)$/.test(i.k))v.push('--ix:'+(dir[0]?(dir[0]<0?'-':'')+U(dist*ikd):'0px'),'--iy:'+(dir[1]?(dir[1]<0?'-':'')+U(dist*ikd):'0px'));
+if(AIND[i.k]&&i.k!='slide'){var nd=DIRV[i.dir]||DIRV[AIND[i.k]];if(i.k=='pan')v.push('--ix:'+Math.round(nd[0]*50*ikd)+'%','--iy:'+Math.round(nd[1]*50*ikd)+'%');else if(i.k=='drift')v.push('--ix:'+Math.round(nd[0]*14*ikd)+'%','--iy:'+Math.round(nd[1]*14*ikd)+'%');else if(i.k=='wipe')v.push('--wp:'+WIPE[DIRV[i.dir]?i.dir:AIND.wipe])}
+var ik=num(i.int,1,.1,1.4);if(ik!=1)v.push('--ik:'+ik);list.push(anim(AIN[i.k],d,EASE[i.e]||EASE.smooth,T[0]+ms(i.dl,0),num(i.n,1,1,20)|0,'normal','both',t))}
+else if(T[0]>0)list.push(anim('bsi-fade',1,'linear',T[0],1,'normal','both',t));
+if(T[2]!=null){var od=AOUT[o.k]?ms(o.d,600)/num(o.sp,1,.1,10):1,odir=o.k=='slide'?(DIRV[o.dir]||DIRV.right):o.k=='fadeDown'?[0,1]:o.k=='fadeUp'?[0,-1]:[0,0];
+if(o.k=='slide')v.push('--ox:'+(odir[0]*110)+'%','--oy:'+(odir[1]*110)+'%');else if(o.k=='fadeDown'||o.k=='fadeUp')v.push('--ox:0px','--oy:'+(odir[1]<0?'-':'')+U(num(o.dist,40,0,2000)));
+if(AOUD[o.k]&&o.k!='slide'){var nod=DIRV[o.dir]||DIRV[AOUD[o.k]];if(o.k=='pan')v.push('--ox:'+Math.round(nod[0]*50)+'%','--oy:'+Math.round(nod[1]*50)+'%');else if(o.k=='drift')v.push('--ox:'+Math.round(nod[0]*14)+'%','--oy:'+Math.round(nod[1]*14)+'%');else if(o.k=='wipe')v.push('--wpo:'+WIPE[DIRV[o.dir]?o.dir:AOUD.wipe])}
+list.push(anim(AOUT[o.k]||'bso-fade',od,EASE[o.e]||EASE.ease,T[2],1,'normal','forwards',t))}
+var a=list.length?'animation:'+list.join(','):'';var lp='';
+if(ALOOP[c.k]){var cd=ms(c.d,2000)/num(c.sp,1,.1,10),n=num(c.n,0,0,1000)|0,am=num(c.amp,10,0,1000);
+v.push('--la:'+U(am),'--lg:'+col(c.col,'rgba(255,214,0,.9)'));lp='animation:'+anim(ALOOP[c.k],cd,EASE[c.e]||EASE.inout,T[1]+ms(c.dl,0),n?n:'infinite',pick(c.dir,['normal','alternate','reverse','alternate-reverse'],c.k=='rotate'?'normal':'alternate'),'both',t)}
+vars.push.apply(vars,v);return [a,lp,kfAnim(l,t)]}
+var KEY='.bss{position:relative;width:100%;overflow:hidden;container-type:inline-size;isolation:isolate;-webkit-user-select:none;user-select:none;line-height:1.2}'
++'.bss *{box-sizing:border-box}.bsbg{position:absolute;inset:0;z-index:0;pointer-events:none}.bsbg video,.bsbg img{width:100%;height:100%;display:block}'
++'.bsl{position:absolute}.bsa,.bsc,.bsx{width:100%;height:100%;position:relative}.bsx>svg{display:block;width:100%;height:100%;overflow:visible}'
++'.bst{display:flex;flex-direction:column;width:100%;height:100%;white-space:pre-wrap;overflow-wrap:break-word}.bst>span{display:block}'
++'.bsb{display:flex;align-items:center;justify-content:center;width:100%;height:100%;white-space:nowrap;transition:transform .2s,box-shadow .2s,filter .2s}.bsb svg{flex:none;width:1.15em;height:1.15em}'
++'.bsh-lift:hover{transform:translateY(-4px)}.bsh-grow:hover{transform:scale(1.06)}.bsh-glow:hover{box-shadow:0 0 18px var(--hc,rgba(255,255,255,.8))!important}.bsh-dark:hover{filter:brightness(.88)}.bsh-light:hover{filter:brightness(1.12)}'
++'.bsim{width:100%;height:100%;overflow:hidden;position:relative}.bsim img,.bsim video{position:absolute;display:block;max-width:none}'
++'.bscd{display:flex;width:100%;height:100%;align-items:stretch;justify-content:center}.bscd>div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0}.bscd b{display:block;font-weight:inherit;line-height:1}.bscd small{display:block;font-size:.34em;opacity:.85;margin-top:.25em}'
++'.bscp{display:flex;align-items:center;justify-content:center;width:100%;height:100%;flex-direction:column;text-align:center}'
++'[data-link],[data-bscopy]{cursor:pointer}'
++'@keyframes bsi-fade{from{opacity:0}}@keyframes bsi-move{from{opacity:0;transform:translate(var(--ix),var(--iy))}}@keyframes bsi-slide{from{transform:translate(var(--ix),var(--iy))}}'
++'@keyframes bsi-zin{from{opacity:0;transform:scale(calc(1 - .7 * var(--ik,1)))}}@keyframes bsi-zout{from{opacity:0;transform:scale(calc(1 + .7 * var(--ik,1)))}}@keyframes bsi-rot{from{opacity:0;transform:rotate(calc(-200deg * var(--ik,1))) scale(calc(1 - .6 * var(--ik,1)))}}@keyframes bsi-fadein{from{opacity:0;transform:scale(calc(1 - .08 * var(--ik,1)))}}'
++'@keyframes bsi-bounce{0%{opacity:0;transform:scale(calc(1 - .7 * var(--ik,1)))}50%{opacity:1;transform:scale(calc(1 + .1 * var(--ik,1)))}70%{transform:scale(calc(1 - .06 * var(--ik,1)))}100%{transform:none}}'
++'@keyframes bsi-pop{0%{opacity:0;transform:scale(calc(1 - .5 * var(--ik,1)))}70%{opacity:1;transform:scale(calc(1 + .15 * var(--ik,1)))}100%{transform:none}}@keyframes bsi-blur{from{opacity:0;filter:blur(calc(14px * var(--ik,1)))}}@keyframes bsi-flip{from{opacity:0;transform:perspective(600px) rotateY(calc(90deg * var(--ik,1)))}}'
++'.bskf{width:100%;height:100%;position:relative}.bsw{display:inline-block;white-space:nowrap;text-indent:0}.bsch{display:inline-block;white-space:pre;text-indent:0}.bsln{display:block}.bsbk{position:absolute;inset:-.04em -.06em;display:block;pointer-events:none}'
++'@keyframes bst-type{0%{opacity:0}100%{opacity:1}}@keyframes bst-asc{from{opacity:0;transform:translateY(calc(.9em * var(--ik,1)))}}@keyframes bst-shift{from{opacity:0;transform:translateX(calc(-.7em * var(--ik,1)))}}'
++'@keyframes bst-merge{from{opacity:0;transform:translateX(calc(var(--tx) * var(--ik,1)))}}@keyframes bst-blkt{0%,50%{opacity:0}50.1%,100%{opacity:1}}'
++'@keyframes bst-blk{0%{transform:scaleX(0);transform-origin:0 50%}50%{transform:scaleX(1);transform-origin:0 50%}50.1%{transform:scaleX(1);transform-origin:100% 50%}100%{transform:scaleX(0);transform-origin:100% 50%}}'
++'@keyframes bst-burst{from{opacity:0;transform:scale(0) rotate(calc(var(--tr) * var(--ik,1)))}}@keyframes bst-bnc{0%{opacity:0;transform:translateY(calc(-1.3em * var(--ik,1)))}50%{opacity:1;transform:translateY(calc(.2em * var(--ik,1)))}75%{transform:translateY(calc(-.08em * var(--ik,1)))}100%{transform:none}}'
++'@keyframes bst-roll{from{opacity:0;transform:perspective(300px) rotateX(calc(-100deg * var(--ik,1))) translateY(.3em)}}@keyframes bst-skate{from{opacity:0;transform:translateX(calc(1.7em * var(--ik,1))) skewX(-25deg)}}'
++'@keyframes bst-spread{from{opacity:0;transform:translateX(calc(var(--sp) * var(--ik,1)))}}@keyframes bst-clar{from{opacity:0;filter:blur(calc(.35em * var(--ik,1)))}}'
++'@keyframes bso-fade{from{opacity:1}to{opacity:0}}@keyframes bso-move{from{opacity:1;transform:none}to{opacity:0;transform:translate(var(--ox),var(--oy))}}@keyframes bso-slide{from{transform:none}to{transform:translate(var(--ox),var(--oy))}}'
++'@keyframes bso-zoom{from{opacity:1;transform:none}to{opacity:0;transform:scale(.3)}}@keyframes bso-rot{from{opacity:1;transform:none}to{opacity:0;transform:rotate(200deg) scale(.4)}}'
++'@keyframes bsl-float{from{transform:translateY(0)}to{transform:translateY(calc(var(--la) * -1))}}@keyframes bsl-pulse{from{transform:scale(1)}to{transform:scale(1.07)}}'
++'@keyframes bsl-shake{0%,100%{transform:translateX(0)}20%{transform:translateX(calc(var(--la) * -.5))}40%{transform:translateX(calc(var(--la) * .5))}60%{transform:translateX(calc(var(--la) * -.3))}80%{transform:translateX(calc(var(--la) * .3))}}'
++'@keyframes bsl-bounce{0%,100%{transform:translateY(0)}40%{transform:translateY(calc(var(--la) * -1.4))}60%{transform:translateY(calc(var(--la) * -.6))}}@keyframes bsl-rot{to{transform:rotate(360deg)}}'
++'@keyframes bsl-zoom{from{transform:scale(1)}to{transform:scale(1.14)}}@keyframes bsl-glow{from{filter:drop-shadow(0 0 0 transparent)}to{filter:drop-shadow(0 0 var(--la) var(--lg))}}'
++'@keyframes bsl-swing{from{transform:rotate(-6deg)}to{transform:rotate(6deg)}}@keyframes bsl-blink{0%,45%{opacity:1}55%,100%{opacity:.25}}'
++'@keyframes bsi-rise{from{opacity:0;transform:translateY(calc(40% * var(--ik,1)))}}@keyframes bsi-pan{0%{opacity:0;transform:translate(var(--ix),var(--iy))}60%{opacity:1}}'
++'@keyframes bsi-wipe{from{clip-path:var(--wp,inset(0 100% 0 0))}99%{clip-path:inset(0 0 0 0)}to{clip-path:inset(-2000px)}}@keyframes bsi-suc{from{opacity:0;transform:translateY(calc(26% * var(--ik,1))) scale(calc(1 - .16 * var(--ik,1)))}60%{opacity:1;transform:translateY(calc(-3% * var(--ik,1))) scale(calc(1 + .03 * var(--ik,1)))}to{transform:none}}'
++'@keyframes bsi-brt{0%{opacity:0;transform:scale(calc(1 - .18 * var(--ik,1)))}55%{opacity:1;transform:scale(calc(1 + .05 * var(--ik,1)))}100%{transform:none}}@keyframes bsi-base{from{opacity:0;transform:translateY(calc(70% * var(--ik,1)));clip-path:inset(0 0 100% 0)}99%{clip-path:inset(0 0 0 0)}to{clip-path:inset(-2000px)}}'
++'@keyframes bsi-drift{from{opacity:0;filter:blur(calc(4px * var(--ik,1)));transform:translate(var(--ix),var(--iy))}}@keyframes bsi-tect{from{opacity:0;transform:translateX(calc(-14% * var(--ik,1))) skewX(calc(10deg * var(--ik,1)))}55%{opacity:1;transform:translateX(calc(3% * var(--ik,1))) skewX(calc(-4deg * var(--ik,1)))}to{transform:none}}'
++'@keyframes bsi-tumb{from{opacity:0;transform:translateY(calc(-70% * var(--ik,1))) rotate(calc(-28deg * var(--ik,1)))}55%{opacity:1;transform:translateY(calc(6% * var(--ik,1))) rotate(calc(9deg * var(--ik,1)))}78%{transform:rotate(calc(-3deg * var(--ik,1)))}to{transform:none}}'
++'@keyframes bsi-neon{0%{opacity:0}8%{opacity:1;filter:brightness(1.8)}12%{opacity:.15;filter:none}22%{opacity:1;filter:brightness(1.6)}28%{opacity:.3;filter:none}42%{opacity:1;filter:brightness(1.4)}50%{opacity:.5;filter:none}62%{opacity:1;filter:brightness(1.2)}100%{opacity:1;filter:none}}'
++'@keyframes bsi-stomp{0%{opacity:0;transform:scale(calc(1 + 1.2 * var(--ik,1)))}50%{opacity:1;transform:scale(calc(1 - .08 * var(--ik,1)))}70%{transform:scale(calc(1 + .03 * var(--ik,1)))}100%{transform:none}}@keyframes bsi-scrap{from{opacity:0;transform:rotate(calc(-9deg * var(--ik,1))) scale(calc(1 - .2 * var(--ik,1)))}55%{opacity:1;transform:rotate(calc(3deg * var(--ik,1))) scale(calc(1 + .03 * var(--ik,1)))}to{transform:none}}'
++'@keyframes bsi-skew{from{opacity:0;transform:translateX(calc(-30% * var(--ik,1))) skewX(calc(25deg * var(--ik,1)))}}@keyframes bsi-elas{0%{opacity:0;transform:scale(0)}40%{opacity:1;transform:scale(calc(1 + .28 * var(--ik,1)))}60%{transform:scale(calc(1 - .14 * var(--ik,1)))}80%{transform:scale(calc(1 + .06 * var(--ik,1)))}100%{transform:none}}'
++'@keyframes bsi-spin{from{opacity:0;transform:rotate(calc(-360deg * var(--ik,1))) scale(.2)}}@keyframes bsi-flipx{from{opacity:0;transform:perspective(600px) rotateX(calc(90deg * var(--ik,1)))}}@keyframes bsi-swoop{from{opacity:0;transform:translate(calc(-60% * var(--ik,1)),calc(40% * var(--ik,1))) rotate(calc(-12deg * var(--ik,1))) scale(.8)}}'
++'@keyframes bsi-curt{from{clip-path:inset(0 50% 0 50%)}99%{clip-path:inset(0 0 0 0)}to{clip-path:inset(-2000px)}}@keyframes bsi-iris{from{clip-path:circle(0% at 50% 50%)}to{clip-path:circle(150% at 50% 50%)}}@keyframes bsi-zblur{from{opacity:0;filter:blur(calc(12px * var(--ik,1)));transform:scale(calc(1 + .5 * var(--ik,1)))}}'
++'@keyframes bso-wipe{from{clip-path:inset(-2000px)}1%{clip-path:inset(0 0 0 0)}to{clip-path:var(--wpo,inset(0 0 0 100%))}}@keyframes bso-rise{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-40%)}}@keyframes bso-drift{from{opacity:1;transform:none}to{opacity:0;filter:blur(4px);transform:translate(var(--ox),var(--oy))}}@keyframes bso-blur{from{opacity:1}to{opacity:0;filter:blur(14px)}}'
++'@keyframes bso-tumb{from{opacity:1;transform:none}to{opacity:0;transform:translateY(70%) rotate(30deg)}}@keyframes bso-pop{0%{opacity:1;transform:none}30%{transform:scale(1.12)}100%{opacity:0;transform:scale(0)}}@keyframes bso-shr{from{opacity:1;transform:none}to{opacity:0;transform:scale(0)}}@keyframes bso-spin{from{opacity:1;transform:none}to{opacity:0;transform:rotate(360deg) scale(.1)}}'
++'@keyframes bso-flip{from{opacity:1;transform:none}to{opacity:0;transform:perspective(600px) rotateX(90deg)}}@keyframes bso-curt{from{clip-path:inset(-2000px)}1%{clip-path:inset(0 0 0 0)}to{clip-path:inset(0 50% 0 50%)}}@keyframes bso-iris{from{clip-path:circle(150% at 50% 50%)}to{clip-path:circle(0% at 50% 50%)}}@keyframes bso-sq{from{opacity:1;transform:none}to{opacity:0;transform:scale(1,0)}}'
++'@keyframes bso-fall{from{opacity:1;transform:none}to{opacity:0;transform:translateY(120%) rotate(12deg)}}@keyframes bso-neon{0%{opacity:1}15%{opacity:.2}25%{opacity:1}40%{opacity:.1}55%{opacity:.7}100%{opacity:0}}@keyframes bso-brt{0%{opacity:1;transform:none}40%{opacity:1;transform:scale(1.05)}100%{opacity:0;transform:scale(.85)}}'
++'@keyframes bsl-flk{0%,18%,22%,52%,58%,100%{opacity:1}20%,54%{opacity:.35}56%{opacity:.7}}@keyframes bsl-wig{0%,100%{transform:rotate(0)}20%{transform:rotate(-4deg)}40%{transform:rotate(4deg)}60%{transform:rotate(-3deg)}80%{transform:rotate(2deg)}}@keyframes bsl-brt{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.05);opacity:.92}}'
++'@keyframes bsl-tada{0%,100%{transform:scale(1) rotate(0)}10%,20%{transform:scale(.92) rotate(-3deg)}30%,50%,70%,90%{transform:scale(1.1) rotate(3deg)}40%,60%,80%{transform:scale(1.1) rotate(-3deg)}}@keyframes bsl-hb{0%,100%{transform:scale(1)}14%{transform:scale(1.12)}28%{transform:scale(1)}42%{transform:scale(1.08)}70%{transform:scale(1)}}'
++'@keyframes bsl-jel{0%,100%{transform:none}22%{transform:skewX(-12deg) skewY(-12deg)}44%{transform:skewX(6deg) skewY(6deg)}66%{transform:skewX(-3deg) skewY(-3deg)}88%{transform:skewX(1deg) skewY(1deg)}}@keyframes bsl-rub{0%,100%{transform:scale(1,1)}30%{transform:scale(1.25,.75)}40%{transform:scale(.75,1.25)}50%{transform:scale(1.15,.85)}65%{transform:scale(.95,1.05)}75%{transform:scale(1.05,.95)}}'
++'@keyframes bsl-flash{0%,50%,100%{opacity:1}25%,75%{opacity:0}}@keyframes bsl-sway{0%,100%{transform:translateX(0)}50%{transform:translateX(var(--la))}}@keyframes bsl-wob{0%,100%{transform:translateX(0) rotate(0)}15%{transform:translateX(calc(var(--la) * -1)) rotate(-5deg)}30%{transform:translateX(calc(var(--la) * .8)) rotate(3deg)}45%{transform:translateX(calc(var(--la) * -.6)) rotate(-3deg)}60%{transform:translateX(calc(var(--la) * .4)) rotate(2deg)}75%{transform:translateX(calc(var(--la) * -.2)) rotate(-1deg)}}'
++'@keyframes bsl-s3d{from{transform:perspective(700px) rotateY(0)}to{transform:perspective(700px) rotateY(360deg)}}@keyframes bsl-hue{from{filter:hue-rotate(0)}to{filter:hue-rotate(360deg)}}'
++'@media (prefers-reduced-motion:reduce){.bss .bsa,.bss .bsc,.bss .bskf,.bss .bsch,.bss .bsbk{animation:none!important}.bss .bsbk{display:none}}';
+function css(){if(!DOC.getElementById('nbbs-css'))addCss('nbbs-css',KEY)}
+
+/* ---------- icons and shapes ---------- */
+var ICONS={cart:'<path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L21 8H6.2"/><circle cx="10" cy="20.5" r="1.3"/><circle cx="17" cy="20.5" r="1.3"/>',
+bag:'<path d="M5 8h14l-1 12H6L5 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',delivery:'<path d="M2.5 6h11.5v10H2.5zM14 9h4l3 3.2V16h-7"/><circle cx="6.5" cy="17.5" r="1.9"/><circle cx="17" cy="17.5" r="1.9"/>',
+location:'<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',phone:'<path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 5 5L14 13l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+whatsapp:'<path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.4z"/><path d="M9.2 8.2c-.4 2.9 3.3 6.8 6.4 6.4l.9-1.6-2-1-1 .9c-1.2-.5-2.2-1.5-2.7-2.7l.9-1-1-2z"/>',
+facebook:'<path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8z"/>',instagram:'<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.4" cy="6.6" r=".9"/>',
+youtube:'<rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10 9.2v5.6l4.8-2.8z"/>',discount:'<path d="M12 2.8l2.3 1.7 2.9-.1.9 2.7 2.3 1.7-.9 2.7.9 2.7-2.3 1.7-.9 2.7-2.9-.1L12 21.2l-2.3-1.7-2.9.1-.9-2.7-2.3-1.7.9-2.7-.9-2.7 2.3-1.7.9-2.7 2.9.1z"/><path d="M9.2 14.8l5.6-5.6"/><circle cx="9.5" cy="9.5" r=".9"/><circle cx="14.5" cy="14.5" r=".9"/>',
+tag:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.4"/>',star:'<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
+clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
+payment:'<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/>',cash:'<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9v6M18 9v6"/>',
+gift:'<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8c-1-3-4.5-5-6-3s2 3 6 3zm0 0c1-3 4.5-5 6-3s-2 3-6 3z"/>',heart:'<path d="M12 20s-7.5-4.6-9-9.4C2 7 4.3 4.5 7.2 4.5c2 0 3.6 1.1 4.8 2.8 1.2-1.7 2.8-2.8 4.8-2.8 2.9 0 5.2 2.5 4.2 6.1C19.5 15.4 12 20 12 20z"/>',
+fire:'<path d="M12 3c1 3 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 1-9z"/>',bolt:'<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',check:'<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16.5 9"/>',
+home:'<path d="M3 11l9-7 9 7M5 9.5V20h5v-6h4v6h5V9.5"/>',store:'<path d="M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3"/>',
+mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6l8.5 7 8.5-7"/>',globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3z"/>',
+arrowRight:'<path d="M4 12h15M13 6l6 6-6 6"/>',sparkle:'<path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>',
+percent:'<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',shield:'<path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-4.5"/>'};
+function icon(n,c,sw,fill){var p=ICONS[n];if(!p)return '';return '<svg viewBox="0 0 24 24" fill="'+(fill?c:'none')+'" stroke="'+(fill?'none':c)+'" stroke-width="'+num(sw,1.8,.5,4)+'" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+p+'</svg>'}
+function poly(n,ro,ri,rot){var a=[],i;for(i=0;i<n*2;i++){var r=i%2?ri:ro,t=Math.PI*i/n-Math.PI/2+(rot||0);a.push((50+r*Math.cos(t)).toFixed(2)+' '+(50+r*Math.sin(t)).toFixed(2))}return a}
+var SP={tri:'M50 2L98 98H2Z',star:'M'+poly(5,49,20).join('L')+'Z',burst:'M'+poly(16,49,40).join('L')+'Z',seal:'M'+poly(24,49,44).join('L')+'Z',
+blob:'M52 4C74 3 96 18 97 44S82 95 54 97 4 84 3 56 28 5 52 4Z',blob2:'M60 3C82 8 99 30 95 56S70 99 42 96 1 74 4 46 38-2 60 3Z',arrow:'M2 34H60V10L98 50 60 90V66H2Z',
+hex:'M25 3H75L98 50 75 97H25L2 50Z',heart:'M50 92C20 70 2 52 2 30 2 14 14 3 28 3 38 3 46 9 50 18 54 9 62 3 72 3 86 3 98 14 98 30 98 52 80 70 50 92Z',
+ribbon:'M0 0H100L88 50 100 100H0L12 50Z',tagS:'M0 0H80L100 50 80 100H0Z',speech:'M8 4H92Q98 4 98 10V64Q98 70 92 70H40L18 94 22 70H8Q2 70 2 64V10Q2 4 8 4Z',
+wave:'M0 55Q12.5 35 25 55T50 55 75 55 100 55V100H0Z',diamond:'M50 2L98 50 50 98 2 50Z',ring:'',pent:'M'+poly(5,49,49*Math.cos(Math.PI/5)).filter(function(x,i){return i%2==0}).join('L')+'Z'};
+var CLIP={circle:'ellipse(50% 50% at 50% 50%)',tri:'polygon(50% 0,100% 100%,0 100%)',hex:'polygon(25% 3%,75% 3%,98% 50%,75% 97%,25% 97%,2% 50%)',diamond:'polygon(50% 0,100% 50%,50% 100%,0 50%)',
+star:'polygon('+poly(5,50,21).map(function(p){return p.split(' ').join('% ')+'%'}).join(',')+')',blob:'polygon('+(function(){var a=[];for(var i=0;i<36;i++){var t=i/36*2*Math.PI,r=46+4*Math.sin(3*t)+2*Math.cos(5*t);a.push((50+r*Math.cos(t)).toFixed(1)+'% '+(50+r*Math.sin(t)).toFixed(1)+'%')}return a.join(',')})()+')',
+arch:'inset(0 round 50% 50% 0 0)'};
+function svgFill(v,id){if(v&&typeof v=='object'){var s=Array.isArray(v.s)&&v.s.length>1?v.s:[{c:'#fff',p:0},{c:'#000',p:100}],st=s.slice(0,8).map(function(x){return '<stop offset="'+num(x.p,0,0,100)+'%" stop-color="'+esc(col(x.c,'#000'))+'"/>'}).join('');
+return [v.t=='radial'?'<radialGradient id="'+id+'" cx="'+num(v.x,50,0,100)/100+'" cy="'+num(v.y,50,0,100)/100+'" r=".6">'+st+'</radialGradient>':'<linearGradient id="'+id+'" gradientTransform="rotate('+(num(v.a,90)-90)+' .5 .5)">'+st+'</linearGradient>','url(#'+id+')']}return ['',col(v,'#ffffff')]}
+
+/* ---------- product data ---------- */
+var BD='০১২৩৪৫৬৭৮৯';
+function digits(s,bn){s=String(s);return bn?s.replace(/\d/g,function(d){return BD[d]}):s}
+function money(n,bn){n=Math.round(num(n,0)*100)/100;return '৳'+digits(n.toLocaleString('en-US',{maximumFractionDigits:2}),bn)}
+function pval(l,o){var b=l.bind||{},P=o.prod?o.prod(String(b.pid||'')):null;if(!P)return null;var bn=l.dg=='bn',pr=num(P.pr,0),old=Math.max(num(P.old,0),pr),pct=old>pr?Math.round((old-pr)*100/old):0,v;
+switch(b.f){case 'name':v=l.pl=='bn'?(P.bn||P.n):P.n;break;case 'price':v=money(pr,bn);break;case 'old':v=money(old,bn);break;case 'pct':v=digits(pct,bn);break;case 'save':v=money(old-pr,bn);break;
+case 'rating':v=P.r!=null&&isFinite(+P.r)?(+P.r).toFixed(1):'';break;case 'img':v=url(P.img);break;default:v=''}
+return {v:v,p:P,pct:pct}}
+
+/* ---------- layers ---------- */
+function txtCss(l){var a=pick(l.al,['left','center','right','justify'],'left'),va=pick(l.va,['top','middle','bottom'],'top'),s=['font-family:'+stack(l.ff),'font-size:'+U(num(l.fs,32,4,1200)),'font-weight:'+(num(l.fw,400,100,900)|0),'line-height:'+num(l.lh,1.25,.5,4),'letter-spacing:'+U(num(l.ls,0,-50,200)),'text-align:'+a,'justify-content:'+(va=='middle'?'center':va=='bottom'?'flex-end':'flex-start')];
+if(l.it)s.push('font-style:italic');var dec=[];if(l.ud)dec.push('underline');if(l.lt)dec.push('line-through');if(dec.length)s.push('text-decoration:'+dec.join(' '));
+if(l.tt)s.push('text-transform:'+pick(l.tt,['uppercase','lowercase','capitalize','none'],'none'));
+var sh=[],ts=shadow(l.tsh,1);if(ts)sh.push(ts);
+if(l.glw&&typeof l.glw=='object'&&l.glw.on){var gb=num(l.glw.b,14,0,300),gc=col(l.glw.c,'#ffd600');sh.push('0 0 '+U(gb*.5)+' '+gc,'0 0 '+U(gb)+' '+gc,'0 0 '+U(gb*2)+' '+gc)}
+if(l.ech&&typeof l.ech=='object'&&l.ech.on){var ex=num(l.ech.x,6,-300,300),ey=num(l.ech.y,6,-300,300),ec=col(l.ech.c,'rgba(0,0,0,.45)');sh.push(U(ex)+' '+U(ey)+' 0 '+ec,U(ex*2)+' '+U(ey*2)+' 0 '+ec)}
+if(l.glt&&typeof l.glt=='object'&&l.glt.on){var go=num(l.glt.o,4,0,200);sh.push(U(-go)+' 0 0 '+col(l.glt.c1,'#00e5ff'),U(go)+' 0 0 '+col(l.glt.c2,'#ff2bd6'))}
+if(sh.length){if(l.grad&&typeof l.grad=='object'&&l.grad.on)s.push('filter:'+sh.map(function(x){return 'drop-shadow('+x+')'}).join(' '));else s.push('text-shadow:'+sh.join(','))}
+if(l.stk&&num(l.stk.w,0)>0)s.push('-webkit-text-stroke:'+U(num(l.stk.w,1,0,40))+' '+col(l.stk.c,'#000'),'paint-order:stroke fill');
+return s}
+function spanCss(l){var s=[];if(l.grad&&typeof l.grad=='object'&&l.grad.on)s.push('background:'+grad(l.grad),'-webkit-background-clip:text','background-clip:text','color:transparent','-webkit-text-fill-color:transparent');else s.push('color:'+col(l.c,'#111111'));
+return s}
+function textHtml(l,o){var t=typeof l.txt=='string'?l.txt:'',pv=null;if(l.bind&&l.bind.f){pv=pval(l,o);if(!pv){if(!o.ed)return null;t=o.ed?'[product]':''}else{t=l.txt&&l.txt.indexOf('{v}')>-1?l.txt.split('{v}').join(pv.v):pv.v;if(l.bind.f=='pct'&&!pv.pct&&!o.ed)return null;if(l.bind.f=='rating'&&!pv.v&&!o.ed)return null}}
+t=etaSub(t,l);
+var box=[];var bg=l.tbg&&typeof l.tbg=='object'&&l.tbg.on?paint(l.tbg.c,'#ffffff'):'';var inner=tAnim(l,o,t);
+if(inner==null)inner='<span style="'+esc(spanCss(l).join(';'))+'">'+(l.lst=='bullet'||l.lst=='number'?tLines(l,t).map(function(x){return '<span class="bsln" style="padding-left:1.15em;text-indent:-1.15em">'+esc(x[0]+x[1])+(x[1]?'':'&#8203;')+'</span>'}).join(''):esc(t))+'</span>';
+if(l.bind&&l.bind.f=='rating'&&pv&&pv.v){var r=+pv.v;inner='<span style="'+esc(spanCss(l).join(';'))+'">'+'★★★★★'.slice(0,Math.round(r))+'<span style="opacity:.3">'+'★★★★★'.slice(Math.round(r))+'</span> '+esc(digits(pv.v,l.dg=='bn'))+'</span>'}
+if(bg){box.push('background:'+bg,'padding:'+U(num(l.tbg.p,8,0,400))+' '+U(num(l.tbg.p,8,0,400)*1.4),'border-radius:'+U(num(l.tbg.r,6,0,2000)))}
+return '<div class="bst" style="'+esc(txtCss(l).concat(box).join(';'))+'">'+inner+'</div>'}
+function border(b){return b&&typeof b=='object'&&num(b.w,0)>0?'border:'+U(num(b.w,1,0,200))+' '+pick(b.s,['solid','dashed','dotted','double'],'solid')+' '+col(b.c,'#000'):''}
+function imgHtml(l,o,src){if(!src)return o.ed?'<div class="bsim" style="background:repeating-conic-gradient(#e7e9f3 0 25%,#f5f6fb 0 50%) 0 0/24px 24px;display:flex;align-items:center;justify-content:center;color:#7a80a6;font:600 13px system-ui">Image</div>':null;
+var cr=l.crop||{},cl=num(cr.l,0,0,95),ct=num(cr.t,0,0,95),crr=num(cr.r,0,0,95),cb=num(cr.b,0,0,95);if(cl+crr>95)crr=95-cl;if(ct+cb>95)cb=95-ct;
+var fw=100/(100-cl-crr)*100,fh=100/(100-ct-cb)*100,f=l.ft=='contain'||l.ft=='fill'?l.ft:'cover',fl=l.flip||{},tr=[];if(fl.h)tr.push('scaleX(-1)');if(fl.v)tr.push('scaleY(-1)');
+var fi=l.fx||{},flt=[];if(num(fi.br,100)!=100)flt.push('brightness('+num(fi.br,100,0,300)+'%)');if(num(fi.ct,100)!=100)flt.push('contrast('+num(fi.ct,100,0,300)+'%)');if(num(fi.sa,100)!=100)flt.push('saturate('+num(fi.sa,100,0,300)+'%)');if(num(fi.gs,0))flt.push('grayscale('+num(fi.gs,0,0,100)+'%)');if(num(fi.bl,0))flt.push('blur('+U(num(fi.bl,0,0,100))+')');if(num(fi.hu,0))flt.push('hue-rotate('+num(fi.hu,0,-360,360)+'deg)');
+var ist=['left:'+(-cl*fw/100).toFixed(3)+'%','top:'+(-ct*fh/100).toFixed(3)+'%','width:'+fw.toFixed(3)+'%','height:'+fh.toFixed(3)+'%','object-fit:'+f,'object-position:'+num(l.px,50,0,100)+'% '+num(l.py,50,0,100)+'%'];if(tr.length)ist.push('transform:'+tr.join(' '));if(flt.length)ist.push('filter:'+flt.join(' '));
+var w=['border-radius:'+U(num(l.rad,0,0,4000))],b=border(l.bd);if(b)w.push(b);if(l.bg)w.push('background:'+paint(l.bg,'transparent'));if(CLIP[l.mask])w.push('clip-path:'+CLIP[l.mask],'-webkit-clip-path:'+CLIP[l.mask]);
+var med=l.t=='video'?'<video src="'+esc(src)+'" autoplay muted loop playsinline preload="metadata" style="'+esc(ist.join(';'))+'"></video>':'<img src="'+esc(src)+'" alt="'+esc(l.alt||'')+'" loading="'+(o.lazy?'lazy':'eager')+'" decoding="async" draggable="false" style="'+esc(ist.join(';'))+'">';
+return '<div class="bsim" style="'+esc(w.join(';'))+'">'+med+'</div>'}
+function shapeHtml(l){var k=l.sh||'rect',f=l.fill==null?'#4a52c8':l.fill,b=l.bd||{};
+if(k=='rect'||k=='rrect'||k=='circle'||k=='pill'||k=='line'||k=='dots'||k=='ring'){var s=['width:100%','height:100%','background:'+(k=='ring'?'transparent':k=='dots'?'radial-gradient(circle,'+col(typeof f=='string'?f:'#4a52c8','#4a52c8')+' 22%,transparent 24%) 0 0/'+U(num(l.gap,24,4,400))+' '+U(num(l.gap,24,4,400)):paint(f,'#4a52c8'))];
+s.push('border-radius:'+(k=='circle'||k=='ring'?'50%':k=='pill'?'9999px':U(k=='rrect'?num(l.rad,24,0,4000):num(l.rad,0,0,4000))));
+if(k=='ring')s.push('border:'+U(num(b.w,8,1,400))+' solid '+col(b.c||(typeof f=='string'?f:''),'#4a52c8'));else{var bd=border(b);if(bd)s.push(bd)}
+var bs=shadow(l.sh2);if(bs)s.push('box-shadow:'+bs);return '<div style="'+esc(s.join(';'))+'"></div>'}
+var p=SP[k]||SP.tri,id='bsg'+(++UID),F=svgFill(f,id),sw=num(b.w,0,0,200),wh=Math.max(1,Math.min(num(l.w,100),num(l.h,100)));
+return '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'+(F[0]?'<defs>'+F[0]+'</defs>':'')+'<path d="'+p+'" fill="'+esc(F[1])+'"'+(sw>0?' stroke="'+esc(col(b.c,'#000'))+'" stroke-width="'+(sw/wh*100).toFixed(2)+'" stroke-linejoin="round"'+(b.s=='dashed'?' stroke-dasharray="6 4"':''):'')+'/></svg>'}
+function btnHtml(l,o){var s=txtCss(l).filter(function(x){return !/^(justify-content|text-align)/.test(x)});s.push('background:'+paint(l.fill==null?'#4a52c8':l.fill,'#4a52c8'),'border-radius:'+U(num(l.rad,12,0,4000)),'padding:0 '+U(num(l.pad,20,0,400)),'gap:'+U(num(l.fs,32)*.4));
+var b=border(l.bd);if(b)s.push(b);var bs=shadow(l.sh2);if(bs)s.push('box-shadow:'+bs);if(l.hc)s.push('--hc:'+col(l.hc,'#fff'));
+var t=typeof l.txt=='string'?l.txt:'',ic=ICONS[l.ic]?icon(l.ic,'currentColor',l.isw||2):'',tc=spanCss(l),cc=col(l.c,'#ffffff');
+var hv=pick(l.hov,['lift','grow','glow','dark','light'],'');var inner=(l.ip=='right'?'':ic)+'<span style="'+esc(tc.join(';'))+'">'+esc(t)+'</span>'+(l.ip=='right'?ic:'');
+return '<div class="bsb'+(hv?' bsh-'+hv:'')+'" style="'+esc(s.concat(['color:'+cc]).join(';'))+'">'+inner+'</div>'}
+function badgeHtml(l,o){var k=l.sh||'burst',t=typeof l.txt=='string'?l.txt:'',t2=typeof l.t2=='string'?l.t2:'',pv=null;
+if(l.bind&&l.bind.f=='pct'){pv=pval(l,o);if(!pv||!pv.pct){if(!o.ed)return null}else{var v=digits(pv.pct,l.dg=='bn');t=t.indexOf('{v}')>-1?t.split('{v}').join(v):v+'%'}}
+var sh=shapeHtml({sh:k,fill:l.fill==null?'#e11d48':l.fill,bd:l.bd,rad:l.rad,w:l.w,h:l.h,sh2:l.sh2});var s=txtCss(l);s.push('justify-content:center','align-items:center','text-align:center','position:absolute','inset:0');
+return '<div style="position:relative;width:100%;height:100%">'+sh+'<div class="bst" style="'+esc(s.join(';'))+'"><span style="'+esc(spanCss(l).join(';'))+'">'+esc(t)+'</span>'+(t2?'<span style="'+esc(spanCss(l).concat(['font-size:.42em','font-weight:500','margin-top:.15em']).join(';'))+'">'+esc(t2)+'</span>':'')+'</div></div>'}
+function couponHtml(l,o){var code=String(l.code||'').replace(/[^A-Za-z0-9_\-]/g,'').slice(0,40),s=txtCss(l);s.push('background:'+paint(l.fill==null?'#fff7ed':l.fill,'#fff7ed'),'border:'+U(num(l.bw,3,0,40))+' dashed '+col(l.bc,'#f97316'),'border-radius:'+U(num(l.rad,14,0,2000)),'justify-content:center','align-items:center','text-align:center');
+var bs=shadow(l.sh2);if(bs)s.push('box-shadow:'+bs);
+return '<div class="bst"'+(o.ed?'':' data-bscopy="'+esc(code)+'"')+' style="'+esc(s.join(';'))+'">'+(l.lbl?'<span style="'+esc(['font-size:.42em','color:'+col(l.lc,'#9a3412'),'margin-bottom:.15em','font-weight:500'].join(';'))+'">'+esc(l.lbl)+'</span>':'')+'<span style="'+esc(spanCss(l).concat(['letter-spacing:.06em']).join(';'))+'">'+esc(code||'CODE')+'</span></div>'}
+var CDL={en:['Days','Hours','Min','Sec'],bn:['দিন','ঘণ্টা','মিনিট','সেকেন্ড']};
+function cdParts(to,now,bn){var s=Math.max(0,Math.floor((to-now)/1000)),a=[Math.floor(s/86400),Math.floor(s%86400/3600),Math.floor(s%3600/60),s%60];return a.map(function(x){return digits(('0'+x).slice(-2),bn)})}
+function cdHtml(l,o){var to=l.toEnd?num(o.end,0):num(l.to,0);if(!to){if(!o.ed)return null;to=(o.now||Date.now())+86400000*2+3723000}var bn=l.dg=='bn',p=cdParts(to,o.now||Date.now(),bn),lb=l.lb=='none'?null:CDL[l.lb=='en'?'en':'bn'],sd=l.days===false?1:0,s=txtCss(l);
+var bx=['background:'+paint(l.fill==null?'rgba(255,255,255,.95)':l.fill,'#fff'),'border-radius:'+U(num(l.rad,10,0,400)),'margin:0 '+U(num(l.gap,6,0,200)/2)];var bd=border(l.bd);if(bd)bx.push(bd);var c=col(l.c,'#111');
+return '<div class="bscd" style="'+esc(s.concat(['color:'+c]).join(';'))+'" data-cd="'+to+'" data-bn="'+(bn?1:0)+'" data-sd="'+sd+'">'+p.slice(sd).map(function(x,i){return '<div style="'+esc(bx.join(';'))+'"><b>'+x+'</b>'+(lb?'<small>'+esc(lb[i+sd])+'</small>':'')+'</div>'}).join('')+'</div>'}
+function content(l,o){switch(l.t){case 'text':return textHtml(l,o);case 'button':return btnHtml(l,o);
+case 'image':case 'logo':case 'video':var src=l.bind&&l.bind.f=='img'?(pval(l,o)||{}).v:url(l.src);return imgHtml(l,o,src);
+case 'shape':return shapeHtml(l);case 'icon':return '<div style="width:100%;height:100%;color:'+esc(col(l.c,'#111'))+'">'+icon(l.ic,'currentColor',l.isw,l.fil)+'</div>';
+case 'badge':return badgeHtml(l,o);case 'coupon':return couponHtml(l,o);case 'countdown':return cdHtml(l,o)}return null}
+function layer(l,i,o){if(!l||typeof l!='object'||l.hid)return '';var c=content(l,o);if(c==null)return '';
+var st=['left:'+U(l.x),'top:'+U(l.y),'width:'+U(Math.max(1,num(l.w,100))),'height:'+U(Math.max(1,num(l.h,100))),'z-index:'+(i+1)],tr=[];
+if(num(l.r,0))tr.push('rotate('+num(l.r,0,-3600,3600)+'deg)');if(num(l.sk,0))tr.push('skewX('+num(l.sk,0,-60,60)+'deg)');if(tr.length)st.push('transform:'+tr.join(' '));
+if(l.op!=null&&num(l.op,1)<1)st.push('opacity:'+num(l.op,1,0,1));var f=[];var ds=l.t=='text'||l.t=='icon'||l.t=='shape'&&SP[l.sh]||l.t=='badge'?dshadow(l.sh2||l.dsh):'';if(l.t=='image'||l.t=='logo'||l.t=='video')ds=dshadow(l.sh2);if(ds)f.push(ds);if(l.t!='image'&&l.t!='logo'&&num(l.blur,0))f.push('blur('+U(num(l.blur,0,0,100))+')');if(f.length)st.push('filter:'+f.join(' '));
+var vars=[],A=o.static?['','','']:animCss(l,o.t,vars),lk=o.ed?'':link(l.link);if(!lk&&!o.ed&&l.bind&&l.bind.pid&&l.bind.ln!==false)lk='#p='+encodeURIComponent(String(l.bind.pid));
+if(vars.length)st=st.concat(vars);
+return '<div class="bsl" style="'+esc(st.join(';'))+'"'+(o.ed?' data-id="'+esc(l.id)+'"':'')+(lk?' data-link="'+esc(lk)+'"':'')+'><div class="bsa"'+(A[0]?' style="'+esc(A[0])+'"':'')+'>'+(A[2]?'<div class="bskf" style="'+esc('animation:'+A[2])+'">':'')+'<div class="bsc"'+(A[1]?' style="'+esc(A[1])+'"':'')+'><div class="bsx">'+c+'</div></div>'+(A[2]?'</div>':'')+'</div></div>'}
+function bgHtml(b){b=b&&typeof b=='object'?b:{t:'solid',c:'#ffffff'};var s='',m='';
+if(b.t=='linear'||b.t=='radial')s='background:'+grad({t:b.t,a:b.a,s:b.s,sh:b.sh,x:b.x,y:b.y});
+else if(b.t=='image'&&url(b.src)){var fit=b.fit=='contain'?'contain':b.fit=='fill'?'100% 100%':b.fit=='tile'?'auto':'cover';s='background:'+col(b.c,'#ffffff')+' '+cssUrl(url(b.src))+' '+num(b.px,50,0,100)+'% '+num(b.py,50,0,100)+'%/'+fit+(b.fit=='tile'?' repeat':' no-repeat')}
+else if(b.t=='video'&&url(b.src)){s='background:'+col(b.c,'#000');m='<div class="bsbg"><video src="'+esc(url(b.src))+'" autoplay muted loop playsinline preload="metadata"'+(url(b.poster)?' poster="'+esc(url(b.poster))+'"':'')+' style="object-fit:cover"></video></div>'}
+else s='background:'+col(b.c,'#ffffff');
+var ov=b.ov&&typeof b.ov=='object'&&b.ov.on?'<div class="bsbg" style="'+esc('background:'+paint(b.ov.c,'rgba(0,0,0,.3)')+';opacity:'+num(b.ov.o,1,0,1))+'"></div>':'';
+if(num(b.bl,0)&&b.t=='image')m='<div class="bsbg" style="'+esc(s+';filter:blur('+U(num(b.bl,0,0,100))+');transform:scale(1.08)')+'"></div>',s='background:'+col(b.c,'#ffffff');
+return [s,m+ov]}
+/** Picks the design for a device, falling back to the closest one that exists. */
+var FB={desktop:['desktop','tablet','mobile'],tablet:['tablet','desktop','mobile'],mobile:['mobile','tablet','desktop']};
+function design(doc,dev){var d=doc&&doc.designs||{};var l=FB[dev]||FB.desktop;for(var i=0;i<3;i++){var x=d[l[i]];if(x&&x.w>0&&x.h>0)return x}return null}
+/** HTML for one banner. o: {dev, t (paused at ms), static, ed (editor), prod(id), now, end, lazy} */
+function render(doc,o){o=o||{};css();var ds=o.ds||design(doc,o.dev||'desktop');if(!ds)return '';var w=num(ds.w,1200,50,4000),h=num(ds.h,400,30,4000);K=100/w;
+var b=bgHtml(ds.bg),L=Array.isArray(ds.layers)?ds.layers:[],out=[];KFC=[];for(var i=0;i<L.length;i++)out.push(layer(L[i],i,o));if(KFC.length)out.push('<style>'+KFC.join('')+'</style>');
+var lk=o.ed?'':link(doc&&doc.link);
+return '<div class="bss'+(o.cls?' '+esc(o.cls):'')+'" style="'+esc('aspect-ratio:'+w+'/'+h+';'+b[0])+'"'+(lk?' data-link="'+esc(lk)+'"':'')+'>'+b[1]+out.join('')+'</div>'}
+/** Length of one play-through (ms): the banner setting, or when the last layer finishes. */
+function duration(doc,dev){var ds=design(doc,dev),m=0;if(ds&&Array.isArray(ds.layers))ds.layers.forEach(function(l){var t=timing(l);m=Math.max(m,t[1],t[3]||0)});return Math.max(num(doc&&doc.dur,0,0,120000)||0,m,1000)}
+/** Time when every entrance has finished (thumbnails and still exports). */
+function still(doc,dev){var ds=design(doc,dev),m=0;if(ds&&Array.isArray(ds.layers))ds.layers.forEach(function(l){var t=timing(l);if(t[2]==null||t[2]>t[1])m=Math.max(m,t[1])});return m+20}
+
+/* ---------- live mounting (website and previews) ---------- */
+var MT=[],TICK=0;
+function tick(){var now=Date.now()+(W.NBBS.skew||0);DOC.querySelectorAll('.bscd[data-cd]').forEach(function(el){var p=cdParts(+el.dataset.cd,now,el.dataset.bn=='1').slice(+el.dataset.sd||0);el.querySelectorAll('b').forEach(function(b,i){if(b.textContent!==p[i])b.textContent=p[i]})});
+MT=MT.filter(function(m){return m.el.isConnected||(m.stop(),false)});if(!MT.length&&TICK){clearInterval(TICK);TICK=0}}
+/** Render into el and keep it alive: countdowns tick, the animation replays every play-through while visible. */
+function mount(el,doc,o){o=o||{};var m={el:el,timer:0,vis:true,stop:function(){clearInterval(m.timer);if(m.io)m.io.disconnect()}};
+MT=MT.filter(function(x){if(x.el===el){x.stop();return false}return true});
+useFonts(fontsOf(doc));function draw(){el.innerHTML=render(doc,o)}draw();
+var dur=duration(doc,o.dev||'desktop'),hasExit=false;each(doc,function(l){if(l&&l.en!=null&&l.en!=='')hasExit=true});
+if(!o.once&&(doc.loop!==false)&&(hasExit||doc.loop===true)){var hold=num(doc.hold,1200,0,60000);m.timer=setInterval(function(){if(m.vis&&!DOC.hidden&&el.isConnected)draw()},dur+hold)}
+if(W.IntersectionObserver){m.io=new IntersectionObserver(function(e){m.vis=e[0].isIntersecting});m.io.observe(el)}
+MT.push(m);if(!TICK)TICK=setInterval(tick,1000);return m}
+DOC.addEventListener('click',function(e){var c=e.target.closest&&e.target.closest('[data-bscopy]');if(!c)return;var v=c.getAttribute('data-bscopy');if(!v)return;e.stopPropagation();
+var done=function(){if(W.NBBS.onCopy)W.NBBS.onCopy(v)};try{navigator.clipboard.writeText(v).then(done,done)}catch(x){done()}},true);
+W.NBBS={render:render,mount:mount,design:design,duration:duration,still:still,timing:timing,useFonts:useFonts,addFonts:addFonts,hasFont:hasFont,fontsOf:fontsOf,fontsReady:fontsReady,embedCss:embedCss,
+FONTS:FONTS,ICONS:ICONS,SHAPES:Object.keys(SP).concat(['rect','rrect','circle','pill','line','ring','dots']),MASKS:Object.keys(CLIP),EASE:EASE,AIN:AIN,AOUT:AOUT,ALOOP:ALOOP,AT:AT,icon:icon,css:css,
+url:url,link:link,col:col,grad:grad,paint:paint,esc:esc,num:num,skew:0,vars:{eta:59}};
+})(window);
+
+/*NBBS:END*/
+</script>
+<script src="/assets/js/images.js?v=2b5306383c"></script>
+<script src="/assets/js/app.js?v=2b5306383c"></script>
+</body>
+</html>

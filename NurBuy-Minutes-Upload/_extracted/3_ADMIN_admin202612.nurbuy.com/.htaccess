@@ -1,0 +1,9 @@
+Options -Indexes
+<IfModule mod_headers.c>
+Header set X-Robots-Tag "noindex, nofollow"
+Header set X-Frame-Options "DENY"
+Header set Referrer-Policy "no-referrer"
+<FilesMatch "\.(html|js)$">
+Header set Cache-Control "no-cache"
+</FilesMatch>
+</IfModule>

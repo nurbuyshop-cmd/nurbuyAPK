@@ -1,0 +1,15 @@
+# Uploaded media is never executed. Images may be read by other NurBuy origins
+# (the Banner Studio exports banners to PNG/GIF in the browser, which needs CORS).
+Options -Indexes -ExecCGI
+<IfModule mod_php.c>
+php_flag engine off
+</IfModule>
+<FilesMatch "\.(php|phtml|phar|pl|py|cgi|sh|html?|js)$">
+Require all denied
+</FilesMatch>
+<IfModule mod_headers.c>
+Header set X-Content-Type-Options nosniff
+<FilesMatch "\.(jpe?g|png|gif|webp|avif|svg|mp4|webm)$">
+Header set Access-Control-Allow-Origin "*"
+</FilesMatch>
+</IfModule>

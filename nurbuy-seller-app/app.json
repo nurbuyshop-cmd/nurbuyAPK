@@ -1,0 +1,106 @@
+{
+  "expo": {
+    "name": "NurBuy Seller",
+    "slug": "nurbuy-seller",
+    "scheme": "nurbuyseller",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f1f4fa",
+    "ios": {
+      "bundleIdentifier": "com.nurbuy.seller",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.nurbuy.seller",
+      "adaptiveIcon": {
+        "backgroundColor": "#F3F3F3",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-status-bar",
+        {
+          "style": "dark",
+          "hidden": true
+        }
+      ],
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-image",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#1d2fe0",
+          "defaultChannel": "default",
+          "sounds": [
+            "./assets/new_order.wav"
+          ]
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "NurBuy Seller does not record audio.",
+          "enableBackgroundPlayback": false
+        }
+      ],
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "NurBuy Seller uses the camera to photograph your products and documents.",
+          "photosPermission": "NurBuy Seller uses your photos for product pictures, your shop logo and documents."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "NurBuy Seller uses your location only when you tap \"Use my current location\" to set your shop pin."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "buildArchs": [
+              "arm64-v8a",
+              "armeabi-v7a"
+            ],
+            "enablePngCrunchInReleaseBuilds": true,
+            "useLegacyPackaging": true
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "expo-status-bar": {
+        "style": "dark",
+        "hidden": true
+      },
+      "eas": {
+        "projectId": "dff405d5-e591-4ffa-8f78-39bead801fc4"
+      }
+    },
+    "owner": "nurbuy"
+  }
+}
