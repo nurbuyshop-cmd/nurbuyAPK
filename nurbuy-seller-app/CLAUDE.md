@@ -55,12 +55,14 @@ All seller endpoints are `/seller/*`, login token from `POST /seller/login` (rol
    (check `POST /seller/device` -> 401) and add Android app `com.nurbuy.seller` in Firebase project nurbuy-d93f2,
    put its google-services.json in this folder, then rebuild. Push never works in Expo Go.
    EAS project `@nurbuy/nurbuy-seller` (id dff405d5-...), first preview build 8d1a420e (without Firebase).
+   2026-10-21: add-on v3 (covers seller + rider) uploaded and verified live; google-services.json (minutes, seller,
+   rider clients) added to this folder; preview build 2b03ff7c started with Firebase.
 6. Polish + EAS preview APK.
 
 ## Decisions (keep)
 
 - Look follows the seller website: light grey page (#f1f4fa) with white cards; bottom bar labels in English like
-  the customer app; status bar hidden.
+  the customer app; status bar shown (dark icons).
 - Uploads: images are shrunk to JPEG on the phone (documents/products 1600 px, cover 2000 px, logo 512 px square)
   and sent as multipart files (the host WAF blocks `data:image` in bodies). Documents may also be PDF (max 4 MB).
 - A PDF document cannot be previewed in the app (a note is shown); images open in a sheet.

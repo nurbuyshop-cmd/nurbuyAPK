@@ -23,5 +23,10 @@ seller notifications (seller_notif) for the seller app. Update = upload the zip 
 Extract, replacing app-ext/app-ext.php (the Firebase JSON in app-ext/ stays). config.php needs no change.
 Check: POST /seller/device without login -> 401 (404 means the new file is not in place).
 
+Version 3 (2026-10-21, app-ext-v3-rider-push.zip): adds POST/DELETE /rider/device and phone push for rider
+notifications (rider_notif: new assignments, approvals, payments, withdrawals) for the rider app. Customer and
+seller parts are unchanged. Update = same as v2 (upload into apin.nurbuy.com, Extract, replace app-ext.php).
+Check: POST /rider/device without login -> 401, and POST /me/device -> 401.
+
 If the API itself one day contains push/cover, the add-on switches that part off by itself.
 To remove the add-on: delete the line from config.php (and the app-ext folder).

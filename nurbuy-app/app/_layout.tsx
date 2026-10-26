@@ -166,15 +166,6 @@ export default function RootLayout() {
     if (ready) SplashScreen.hide();
   }, [ready]);
 
-  // the phone's status bar stays hidden inside the app (some phones kept blinking its icons); a swipe from the top
-  // still shows it for a moment. Set again when the app comes back, as Android may show it after a switch.
-  useEffect(() => {
-    if (!ready) return;
-    StatusBar.setHidden(true, 'none');
-    const sub = AppState.addEventListener('change', (s) => s === 'active' && StatusBar.setHidden(true, 'none'));
-    return () => sub.remove();
-  }, [ready]);
-
   // visitor analytics: one visit per launch and a ping every minute while open (pages: RouteWatch)
   useEffect(() => {
     if (!booted) return;
@@ -213,6 +204,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <View style={styles.root}>
+          <StatusBar style="dark" />
           <RouteWatch ready={ready} booted={booted} />
           <Screens />
           <BottomBar />

@@ -131,14 +131,6 @@ export default function RootLayout() {
     if (ready) SplashScreen.hide();
   }, [ready]);
 
-  // the phone's status bar stays hidden inside the app, like the customer app (some phones kept blinking its icons)
-  useEffect(() => {
-    if (!ready) return;
-    StatusBar.setHidden(true, 'none');
-    const sub = AppState.addEventListener('change', (s) => s === 'active' && StatusBar.setHidden(true, 'none'));
-    return () => sub.remove();
-  }, [ready]);
-
   const tick = usePolling(ready);
 
   // phone push: register this phone after login (also on an app start with a saved login, and when the app comes back)
@@ -163,6 +155,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <View style={styles.root}>
+        <StatusBar style="dark" />
         <Gate />
         <Stack screenOptions={SCREEN_OPTIONS}>
           <Stack.Screen name="index" />

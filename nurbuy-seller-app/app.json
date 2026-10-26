@@ -28,7 +28,7 @@
         "expo-status-bar",
         {
           "style": "dark",
-          "hidden": true
+          "hidden": false
         }
       ],
       "expo-secure-store",
@@ -95,7 +95,7 @@
       "router": {},
       "expo-status-bar": {
         "style": "dark",
-        "hidden": true
+        "hidden": false
       },
       "eas": {
         "projectId": "dff405d5-e591-4ffa-8f78-39bead801fc4"

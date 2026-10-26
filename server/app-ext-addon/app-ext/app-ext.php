@@ -11,9 +11,11 @@
  *   POST /me/device, DELETE /me/device   the customer app registers / removes its phone push token
  *   POST /me/cover                       profile cover photo upload (multipart, field "file")
  *   POST /seller/device, DELETE /seller/device   the seller app registers / removes its phone push token
+ *   POST /rider/device, DELETE /rider/device     the rider app registers / removes its phone push token (v3)
  *   phone push (Firebase Cloud Messaging) for every customer notification (user_notif rows),
- *   a notification when support replies in chat, and every seller notification (seller_notif rows:
- *   new orders, approvals, boosts, withdrawals...).
+ *   a notification when support replies in chat, every seller notification (seller_notif rows:
+ *   new orders, approvals, boosts, withdrawals...) and every rider notification (rider_notif rows:
+ *   new assignments, approvals, payments, withdrawals...).
  * Nothing in the API files is changed. If something here fails, the API carries on as normal.
  * ===================================================================== */
 if (!defined('NB')) { http_response_code(403); exit; }
@@ -41,6 +43,7 @@ function appext_boot() {
     if ($path === '/me/device' && !function_exists('h_me_device_add')) $h = $method === 'POST' ? 'appext_device_add' : ($method === 'DELETE' ? 'appext_device_del' : null);
     elseif ($path === '/me/cover' && $method === 'POST' && !function_exists('h_me_cover')) $h = 'appext_me_cover';
     elseif ($path === '/seller/device' && function_exists('require_seller') && !function_exists('h_seller_device_add')) $h = $method === 'POST' ? 'appext_seller_device_add' : ($method === 'DELETE' ? 'appext_seller_device_del' : null);
+    elseif ($path === '/rider/device' && function_exists('require_rider') && !function_exists('h_rider_device_add')) $h = $method === 'POST' ? 'appext_rider_device_add' : ($method === 'DELETE' ? 'appext_rider_device_del' : null);
     if (!$h) return;
 
     // answered here, the same way index.php answers (same errors and JSON)
@@ -88,7 +91,7 @@ function appext_device_add() {
     appext_device_save((string)$u['id']);
 }
 
-/** Saves this phone's token for an owner key (customer id, or "seller:<id>" for the seller app). */
+/** Saves this phone's token for an owner key (customer id, "seller:<id>" for the seller app, "rider:<id>" for the rider app). */
 function appext_device_save($owner) {
     appext_tables();
     $b = body_json();
@@ -129,6 +132,16 @@ function appext_seller_device_add() {
 function appext_seller_device_del() {
     $s = require_seller(false);
     appext_device_forget('seller:' . (int)$s['id']);
+}
+
+/* ---------- POST / DELETE /rider/device {token, platform} (rider app; any rider status) ---------- */
+function appext_rider_device_add() {
+    $r = require_rider(false);
+    appext_device_save('rider:' . (int)$r['id']);
+}
+function appext_rider_device_del() {
+    $r = require_rider(false);
+    appext_device_forget('rider:' . (int)$r['id']);
 }
 
 /* ---------- POST /me/cover (multipart "file") ---------- */
@@ -172,16 +185,20 @@ function appext_after() {
     } catch (Throwable $e) { return; }
     try { appext_chat_replies(); } catch (Throwable $e) { error_log('NurBuy app-ext chat: ' . $e->getMessage()); }
     try { if (appext_fcm_account() && function_exists('curl_init')) appext_send_new(); } catch (Throwable $e) { error_log('NurBuy app-ext push: ' . $e->getMessage()); }
-    try { if (appext_fcm_account() && function_exists('curl_init')) appext_send_new_seller(); } catch (Throwable $e) { error_log('NurBuy app-ext seller push: ' . $e->getMessage()); }
+    try { if (appext_fcm_account() && function_exists('curl_init')) appext_send_new_role('appext_snotif', 'seller_notif', 'seller_id', 'seller'); } catch (Throwable $e) { error_log('NurBuy app-ext seller push: ' . $e->getMessage()); }
+    try { if (appext_fcm_account() && function_exists('curl_init')) appext_send_new_role('appext_rnotif', 'rider_notif', 'rider_id', 'rider'); } catch (Throwable $e) { error_log('NurBuy app-ext rider push: ' . $e->getMessage()); }
 }
 
-/** New seller notifications (seller_notif) go to that seller's phones (tokens saved as "seller:<id>"). */
-function appext_send_new_seller() {
-    $r = appext_claim('appext_snotif', 'seller_notif');
+/**
+ * New seller / rider notifications go to that person's phones (tokens saved as "seller:<id>" / "rider:<id>").
+ * $key is the kv cursor ("appext_snotif" for sellers, "appext_rnotif" for riders).
+ */
+function appext_send_new_role($key, $table, $col, $role) {
+    $r = appext_claim($key, $table);
     if (!$r) return;
-    $rows = db_rows('SELECT id, seller_id, title, body, url, img, kind, created_at FROM seller_notif WHERE id BETWEEN ? AND ? ORDER BY id', $r);
+    $rows = db_rows("SELECT id, $col AS nb_owner, title, body, url, img, kind, created_at FROM $table WHERE id BETWEEN ? AND ? ORDER BY id", $r);
     $owners = [];
-    foreach ($rows as $n) if ((int)$n['created_at'] >= now_ts() - APPEXT_MAX_AGE) $owners['seller:' . (int)$n['seller_id']] = true;
+    foreach ($rows as $n) if ((int)$n['created_at'] >= now_ts() - APPEXT_MAX_AGE) $owners[$role . ':' . (int)$n['nb_owner']] = true;
     if (!$owners) return;
     try {
         $ids = array_keys($owners);
@@ -191,8 +208,8 @@ function appext_send_new_seller() {
     foreach ($toks as $t) $by[(string)$t['user_id']][] = $t;
     foreach ($rows as $n) {
         if ((int)$n['created_at'] < now_ts() - APPEXT_MAX_AGE) continue;
-        foreach ($by['seller:' . (int)$n['seller_id']] ?? [] as $t)
-            appext_fcm_send((int)$t['id'], $t['token'], ['title' => $n['title'], 'body' => $n['body'] ?? '', 'url' => $n['url'] ?: '/', 'img' => $n['img'], 'tag' => $n['kind'] ?: 'nb', 'id' => 'seller' . $n['id']]);
+        foreach ($by[$role . ':' . (int)$n['nb_owner']] ?? [] as $t)
+            appext_fcm_send((int)$t['id'], $t['token'], ['title' => $n['title'], 'body' => $n['body'] ?? '', 'url' => $n['url'] ?: '/', 'img' => $n['img'], 'tag' => $n['kind'] ?: 'nb', 'id' => $role . $n['id']]);
     }
 }
 

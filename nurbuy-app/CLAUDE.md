@@ -16,7 +16,7 @@ and `RELEASE.md` (build / Play Store checklist, in Bangla). Workspace-wide facts
 ## Decisions the user asked for (keep them)
 
 - Bottom nav labels always English; Bangla UI font Noto Sans Bengali, text without Bangla letters uses Hind (`Txt`).
-- White background everywhere. Status bar hidden inside the app (it blinked on some phones).
+- White background everywhere. Status bar shown with dark icons (was hidden 2026-10 because of blinking; user asked to show it again on 2026-10-26).
 - Auto-sliding only for shops row, sponsored row and the product photo gallery; product rows move by finger only.
 - Sliders and rows must use the phone's native scrolling (`AutoSlider` = ScrollView + snap, `ProductRow` = FlatList);
   never drive finger drags from JavaScript (PanResponder) - it stuttered on cheap phones.

@@ -1,0 +1,100 @@
+{
+  "expo": {
+    "name": "NurBuy Rider",
+    "slug": "nurbuy-rider",
+    "scheme": "nurbuyrider",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f1f4fa",
+    "ios": {
+      "bundleIdentifier": "com.nurbuy.rider",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.nurbuy.rider",
+      "adaptiveIcon": {
+        "backgroundColor": "#F3F3F3",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-status-bar",
+        {
+          "style": "dark",
+          "hidden": false
+        }
+      ],
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-image",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#1d2fe0",
+          "defaultChannel": "default",
+          "sounds": [
+            "./assets/new_order.wav"
+          ]
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "NurBuy Rider does not record audio.",
+          "enableBackgroundPlayback": false
+        }
+      ],
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "NurBuy Rider uses the camera for your profile photo, your documents and photos for customer reports.",
+          "photosPermission": "NurBuy Rider uses your photos for your profile photo, your documents and customer reports."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "buildArchs": [
+              "arm64-v8a",
+              "armeabi-v7a"
+            ],
+            "enablePngCrunchInReleaseBuilds": true,
+            "useLegacyPackaging": true
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "expo-status-bar": {
+        "style": "dark",
+        "hidden": false
+      },
+      "eas": {
+        "projectId": "0119badd-0abb-41c7-a38d-017a4461197f"
+      }
+    },
+    "owner": "nurbuy"
+  }
+}

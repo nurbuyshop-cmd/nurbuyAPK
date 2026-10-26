@@ -12,7 +12,7 @@ user a file plus exact steps, then verify with `curl.exe` against the live API.
 | `nurbuy-seller-app/` | Seller Android app (Expo / React Native), started 2026-10-20. Its own `CLAUDE.md` has the plan. |
 | `nurbuy-rider-app/` | Rider app (not started yet). |
 | `NurBuy-Minutes-Upload/` | The user's own deploy zips of the whole system: `1_API` (apin.nurbuy.com), `2_WEBSITE` (minutes.nurbuy.com, customer site), `3_ADMIN`, `4_SELLER` (seller.nurbuy.com), `5_RIDER` (rider.nurbuy.com). Extracted copies in `_extracted/`. These are the source of truth for API shapes and website behaviour; there are no other docs. The user may replace these zips with newer versions. |
-| `server/app-ext-addon/` | Live server add-on (push notifications via FCM, `/me/device`, `/me/cover`). Installed on 2026-10-20. |
+| `server/app-ext-addon/` | Live server add-on (push notifications via FCM, `/me/device`, `/me/cover`). Installed on 2026-10-20. v2 adds `/seller/device`, v3 (2026-10-21, `app-ext-v3-rider-push.zip`) adds `/rider/device` + rider push; v3 contains everything. |
 | `server/old-patches/` | Superseded API patches, kept for history only. Do not upload. |
 | `reference/` | Images (app icon source `images/006.png`), reference videos, an old copy of live API assets. |
 
@@ -26,6 +26,7 @@ Each app is worked on in its own chat; start by reading that app's `CLAUDE.md`.
 - The user deploys new API packages that REPLACE `index.php` and `lib/`. Never patch those files for the apps: put server
   additions in `apin.nurbuy.com/app-ext/app-ext.php` (started from `config.php`, which is not in the package).
   After any API update check `POST /me/device` without login -> 401 (404/500 means the add-on is not running).
+  Send it with `-H "Content-Type: application/json"` and a small JSON body; a bare POST can give a false 404.
 - Host security filter (WAF): any request body containing `data:image` is rejected (PHP sees 405). Upload images as
   multipart files. Test uploads with `curl.exe`, not .NET HttpClient.
 - Push: Firebase project `nurbuy-d93f2`; service-account JSON on the server at `app-ext/firebase-service-account.json`

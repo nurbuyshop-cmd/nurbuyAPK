@@ -32,7 +32,7 @@
     },
     "plugins": [
       "expo-router",
-      ["expo-status-bar", { "style": "dark", "hidden": true }],
+      ["expo-status-bar", { "style": "dark", "hidden": false }],
       "expo-secure-store",
       "expo-font",
       [
